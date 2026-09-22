@@ -212,9 +212,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (err: any) {
       console.error('Login error:', err);
-      const errorMsg = err.message?.includes('Invalid login credentials')
-        ? 'Invalid email or password. Please try again.'
-        : 'An unexpected error occurred during login. Please try again.';
+      let errorMsg = 'An unexpected error occurred during login. Please try again.';
+
+      if (err.message?.includes('Invalid login credentials')) {
+        errorMsg = 'Invalid email or password. Please try again.';
+      } else if (err.message?.includes('User not found') || err.message?.includes('not found')) {
+        errorMsg = 'No account found with this email. Please check your email or sign up.';
+      } else if (err.message?.includes('Email not confirmed')) {
+        errorMsg = 'Please verify your email before logging in. Check your inbox for the verification link.';
+      }
+
       setAuthError(errorMsg);
       setIsLoading(false);
       return { success: false, error: errorMsg };
@@ -255,12 +262,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           }
         });
 
-        if (error) throw error;
+        if (error) {
+          // Handle user already exists error from Supabase
+          if (error.message?.includes('User already registered') || error.message?.includes('already been taken')) {
+            throw new Error('An account with this email already exists. Please login instead.');
+          }
+          throw error;
+        }
 
         // Sign up successful, but email not verified yet
         setPendingVerificationEmail(cleanEmail);
         setIsLoading(false);
-        return { success: true };
+        return { success: true, requiresConfirmation: true };
       } else {
         // Fallback to local storage (instant verification simulation)
         const storedUsersRaw = localStorage.getItem(REGISTERED_USERS_KEY);
