@@ -31,7 +31,8 @@ export const AITutor: React.FC = () => {
     uploadState,
     removeUploadedMaterial,
     processAndSetFile,
-    subjects
+    subjects,
+    currentLearningContext
   } = useStudent();
 
   const [messages, setMessages] = useState<TutorMessage[]>([
@@ -242,6 +243,8 @@ export const AITutor: React.FC = () => {
         board: student.board,
         stream: student.stream,
         difficulty: student.level || 'Beginner',
+        chapter: currentLearningContext.chapter,
+        topic: currentLearningContext.topic,
         uploadedContext: uploadedMaterial
           ? {
               fileName: uploadedMaterial.fileName,

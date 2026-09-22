@@ -54,6 +54,35 @@ export interface CurriculumChapter {
   topics: CurriculumTopic[];
 }
 
+export interface PedagogicalStyleContent {
+  heading: string;
+  paragraph: string;
+  subtext: string;
+  tip: string;
+  bulletPoints?: string[];
+  exampleBox?: string;
+  analogyDetails?: {
+    analogyTitle: string;
+    analogyStory: string;
+    conceptMapping: { realWorld: string; concept: string }[];
+  };
+  visualDiagram?: string;
+  comparisonTable?: {
+    headers: string[];
+    rows: string[][];
+  };
+  visualSteps?: string[];
+  examBreakdown?: {
+    definition: string;
+    keyPoints: string[];
+    formulas: string[];
+    importantFacts?: string[];
+    commonMistakes: string[];
+    examTips: string[];
+    practiceQuestions: { question: string; marks: string; solution: string }[];
+  };
+}
+
 export interface CurriculumLessonContent {
   subject: string;
   classLevel: ClassLevel;
@@ -65,17 +94,20 @@ export interface CurriculumLessonContent {
   topicTitle: string;
   difficulty: DifficultyLevel;
   progress: number;
-  styles: Record<
-    LearningStyle,
-    {
-      heading: string;
-      paragraph: string;
-      subtext: string;
-      tip: string;
-      bulletPoints?: string[];
-      exampleBox?: string;
-    }
-  >;
+  styles: Record<LearningStyle, PedagogicalStyleContent>;
+}
+
+export interface CurrentLearningContext {
+  classLevel: ClassLevel;
+  board: BoardType;
+  stream: StreamType;
+  subject: SubjectType;
+  chapter: string;
+  chapterId?: string;
+  topic: string;
+  topicId?: string;
+  learningStyle: LearningStyle;
+  difficulty: DifficultyLevel;
 }
 
 export interface StudentAcademicProfile {
@@ -154,6 +186,7 @@ export interface ActivityItem {
 export interface QuizQuestion {
   id: string;
   subject: SubjectType;
+  chapter?: string;
   topic: string;
   difficulty: DifficultyLevel;
   question: string;
@@ -161,6 +194,8 @@ export interface QuizQuestion {
   correctIndex: number;
   explanation: string;
   hint?: string;
+  classLevel?: ClassLevel;
+  board?: BoardType;
 }
 
 export interface QuizResult {

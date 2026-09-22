@@ -13,10 +13,10 @@ import {
 import { useStudent } from '../context/StudentContext';
 
 export const LearningPathView: React.FC = () => {
-  const { learningPath, student, setActiveTab, setActiveSubject } = useStudent();
+  const { learningPath, student, setActiveTab, setActiveSubject, setTopicContext } = useStudent();
 
-  const handleLaunchTopic = (subject: any) => {
-    setActiveSubject(subject);
+  const handleLaunchTopic = (node: any) => {
+    setTopicContext(node.subject, node.title, node.title);
     setActiveTab('adaptive');
   };
 
@@ -155,7 +155,7 @@ export const LearningPathView: React.FC = () => {
                 <div>
                   {!isLocked ? (
                     <button
-                      onClick={() => handleLaunchTopic(node.subject)}
+                      onClick={() => handleLaunchTopic(node)}
                       className="btn btn-primary"
                       style={{
                         padding: '10px 18px',

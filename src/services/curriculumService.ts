@@ -149,6 +149,8 @@ export function getChapters(
   ];
 }
 
+export { generateCurriculumLesson } from '../data/curriculum';
+
 /**
  * Returns complete dynamic lesson content with 4 learning styles
  */
@@ -189,99 +191,100 @@ export function getTodaysLesson(
 }
 
 /**
- * Subject-specific quiz question repository
- * Strict validation: never mixes Chemistry questions into Math or Physics!
+ * Normalizes text for robust matching while preserving semantic distinction
+ */
+function cleanText(text?: string): string {
+  if (!text) return '';
+  return text.toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+/**
+ * Checks if a question's chapter matches the target chapter
+ */
+export function chapterMatches(qChapter?: string, targetChapter?: string): boolean {
+  if (!targetChapter) return true;
+  if (!qChapter) return true;
+  const qClean = cleanText(qChapter);
+  const tClean = cleanText(targetChapter);
+  return qClean === tClean || qClean.includes(tClean) || tClean.includes(qClean);
+}
+
+/**
+ * Checks if a question's topic matches the target topic
+ * Strictly prevents cross-topic pollution (e.g. Geometry vs Number Systems, Motion vs Carbon)
+ */
+export function topicMatches(qTopic?: string, targetTopic?: string): boolean {
+  if (!targetTopic) return true;
+  if (!qTopic) return true;
+  const qClean = cleanText(qTopic);
+  const tClean = cleanText(targetTopic);
+
+  if (qClean === tClean) return true;
+
+  // Strict cross-topic collision guards:
+  // 1. Triangles / Geometry vs Number Systems / Irrational Numbers
+  if (qClean.includes('triangle') && !tClean.includes('triangle')) return false;
+  if (tClean.includes('triangle') && !qClean.includes('triangle')) return false;
+  if ((qClean.includes('irrational') || qClean.includes('rational')) && 
+      (!tClean.includes('irrational') && !tClean.includes('rational') && !tClean.includes('number'))) return false;
+  if ((tClean.includes('irrational') || tClean.includes('rational')) && 
+      (!qClean.includes('irrational') && !qClean.includes('rational') && !qClean.includes('number'))) return false;
+
+  // 2. Motion vs Functional Groups / Carbon
+  if ((qClean.includes('motion') || qClean.includes('velocity')) && 
+      (tClean.includes('carbon') || tClean.includes('functional') || tClean.includes('alcohol'))) return false;
+  if ((tClean.includes('motion') || tClean.includes('velocity')) && 
+      (qClean.includes('carbon') || qClean.includes('functional') || qClean.includes('alcohol'))) return false;
+
+  // 3. Binary Trees vs Algorithms / Other CS
+  if (qClean.includes('tree') && !tClean.includes('tree')) return false;
+  if (tClean.includes('tree') && !qClean.includes('tree')) return false;
+
+  return qClean.includes(tClean) || tClean.includes(qClean);
+}
+
+/**
+ * Subject- and Topic-specific quiz question repository
+ * STRICT MATCHING:
+ * - When chapter and topic are provided, only questions matching that chapter & topic are returned.
+ * - STRICT NO FALLBACK RULE: Never returns questions from an unrelated topic or chapter.
+ * - If no questions exist in the database, returns an empty array [] so the UI can inform the user.
  */
 export function getQuizQuestions(
   grade: ClassLevel,
   board: BoardType,
   stream: StreamType,
   subject: string,
-  difficulty: DifficultyLevel
+  chapter?: string,
+  topic?: string,
+  difficulty?: DifficultyLevel
 ): QuizQuestion[] {
-  const normGrade = normalizeGrade(grade);
-
-  // First filter existing questions in database that strictly match the subject
-  const exactSubjectQuestions = QUIZ_QUESTIONS.filter((q) =>
+  // 1. Filter existing questions in database that strictly match the subject
+  const subjectQuestions = QUIZ_QUESTIONS.filter((q) =>
     validateSubjectContext(q.subject, subject)
   );
 
-  if (exactSubjectQuestions.length >= 3) {
-    return exactSubjectQuestions;
+  // 2. Filter strictly by chapter and topic if provided
+  const matched = subjectQuestions.filter((q) => {
+    const chMatch = chapterMatches(q.chapter, chapter);
+    const topMatch = topicMatches(q.topic, topic);
+    return chMatch && topMatch;
+  });
+
+  if (matched.length > 0) {
+    // If difficulty is specified and there are enough matching questions, filter or sort by difficulty
+    if (difficulty) {
+      const difficultyMatched = matched.filter((q) => q.difficulty === difficulty);
+      if (difficultyMatched.length >= 3) {
+        return difficultyMatched;
+      }
+    }
+    return matched;
   }
 
-  // Generate subject-calibrated authentic questions matching grade and subject
-  const chapters = getChapters(normGrade, board, stream, subject);
-  const primaryChapter = chapters[0];
-  const topic1 = primaryChapter.topics[0]?.title || `${subject} Core Theory`;
-  const topic2 = primaryChapter.topics[1]?.title || `${subject} Application`;
-
-  return [
-    {
-      id: `gen-q-1-${subject.toLowerCase()}`,
-      subject: subject as SubjectType,
-      topic: topic1,
-      difficulty,
-      question: `In ${normGrade} ${subject}, which of the following is the fundamental governing principle of ${topic1}?`,
-      options: [
-        `Standard analytical definition of ${topic1}`,
-        `Inverse proportional relationship`,
-        `Non-conserved energetic state`,
-        `Arbitrary assumption without proof`
-      ],
-      correctIndex: 0,
-      explanation: `By definition in the ${normGrade} ${board} syllabus, this represents the standard formulation of ${topic1}.`,
-      hint: `Recall the introductory definitions covered in Chapter 1.`
-    },
-    {
-      id: `gen-q-2-${subject.toLowerCase()}`,
-      subject: subject as SubjectType,
-      topic: topic1,
-      difficulty,
-      question: `What is the primary objective of analyzing ${topic1} in practical problems?`,
-      options: [
-        `To eliminate unknown variables systematically`,
-        `To maximize computational ambiguity`,
-        `To ignore initial boundary conditions`,
-        `To alter fundamental laws arbitrarily`
-      ],
-      correctIndex: 0,
-      explanation: `Systematic resolution of unknowns is the cornerstone of problem solving in ${subject}.`,
-      hint: `Consider how step-by-step methods verify correctness.`
-    },
-    {
-      id: `gen-q-3-${subject.toLowerCase()}`,
-      subject: subject as SubjectType,
-      topic: topic2,
-      difficulty,
-      question: `When applying ${topic2} under ${board} exam criteria, what is essential for earning full credit?`,
-      options: [
-        `Showing standard formulas, step-by-step substitution, and units`,
-        `Writing only the numerical answer without steps`,
-        `Skipping intermediate calculations`,
-        `Using non-standard custom abbreviations`
-      ],
-      correctIndex: 0,
-      explanation: `${board} marking schemes award specific marks for formulas, substitutions, and proper units.`,
-      hint: `Think of step-marking criteria used by board evaluators.`
-    },
-    {
-      id: `gen-q-4-${subject.toLowerCase()}`,
-      subject: subject as SubjectType,
-      topic: topic2,
-      difficulty,
-      question: `How does increasing conceptual difficulty affect the problem-solving strategy in ${subject}?`,
-      options: [
-        `It requires combining multiple sub-concepts and verifying edge conditions`,
-        `It makes fundamental rules obsolete`,
-        `It only requires memorizing longer answers`,
-        `It eliminates the need for mathematical rigor`
-      ],
-      correctIndex: 0,
-      explanation: `Advanced problems synthesize foundational rules across multiple chapters.`,
-      hint: `Multi-step reasoning connects concepts together.`
-    }
-  ];
+  // STRICT NO FALLBACK: If no questions match the specific topic, return []
+  // DO NOT fall back to another chapter, subject, or generic synthetic questions.
+  return [];
 }
 
 /**

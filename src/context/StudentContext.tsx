@@ -13,7 +13,8 @@ import {
   LearningPathNode,
   ActivityItem,
   QuizResult,
-  ParsedMaterial
+  ParsedMaterial,
+  CurrentLearningContext
 } from '../types';
 import {
   INITIAL_STUDY_PLAN,
@@ -23,6 +24,7 @@ import {
   getAvailableSubjects,
   getRecommendations,
   getLearningPath,
+  getChapters,
   normalizeGrade
 } from '../services/curriculumService';
 import { useAuth } from './AuthContext';
@@ -45,6 +47,17 @@ interface StudentContextType {
   uploadedMaterial: ParsedMaterial | null;
   uploadState: 'idle' | 'uploading' | 'analyzing' | 'ready' | 'error';
   uploadError: string | null;
+  currentLearningContext: CurrentLearningContext;
+  setCurrentLearningContext: React.Dispatch<React.SetStateAction<CurrentLearningContext>>;
+  setTopicContext: (
+    subject: SubjectType,
+    chapter: string,
+    topic: string,
+    chapterId?: string,
+    topicId?: string,
+    difficulty?: DifficultyLevel
+  ) => void;
+  startQuizForCurrentTopic: (override?: Partial<CurrentLearningContext>) => void;
   setActiveTab: (tab: string) => void;
   setActiveSubject: (subject: SubjectType) => void;
   setPreferredStyle: (style: LearningStyle) => void;
@@ -150,6 +163,36 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'analyzing' | 'ready' | 'error'>('idle');
   const [uploadError, setUploadError] = useState<string | null>(null);
 
+  // Centralized single source of truth for active lesson & quiz context
+  const [currentLearningContext, setCurrentLearningContext] = useState<CurrentLearningContext>(() => {
+    const normGrade = initialAcademic.grade;
+    const initBoard = initialAcademic.board;
+    const initStream = initialAcademic.stream;
+    const initSubject = 'Mathematics';
+    const chs = getChapters(normGrade, initBoard, initStream, initSubject);
+    const ch = chs[0] || {
+      id: 'cbse-9-math-ch1',
+      title: 'Number Systems',
+      topics: [{ id: 'cbse-9-math-t1', title: 'Irrational Numbers and Decimal Expansions' }]
+    };
+    const top = ch.topics[0] || {
+      id: 'cbse-9-math-t1',
+      title: 'Irrational Numbers and Decimal Expansions'
+    };
+    return {
+      classLevel: normGrade,
+      board: initBoard,
+      stream: initStream,
+      subject: initSubject,
+      chapter: ch.title,
+      chapterId: ch.id,
+      topic: top.title,
+      topicId: top.id,
+      learningStyle: initialAcademic.preferredStyle,
+      difficulty: initialAcademic.level
+    };
+  });
+
   // Synchronize student profile whenever auth user changes
   useEffect(() => {
     if (user) {
@@ -161,16 +204,74 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         level: user.level || prev.level,
         preferredStyle: user.preferredStyle || prev.preferredStyle
       }));
+      setCurrentLearningContext((prev) => ({
+        ...prev,
+        classLevel: userGrade,
+        learningStyle: user.preferredStyle || prev.learningStyle,
+        difficulty: user.level || prev.difficulty
+      }));
     }
   }, [user]);
 
-  // Set active subject and automatically sync subject-specific recommendations & learning path
+  // Set active subject and automatically sync subject-specific recommendations, learning path, and context
   const setActiveSubject = (subject: SubjectType) => {
     setActiveSubjectState(subject);
     const updatedRecs = getRecommendations(student.grade, student.board, student.stream, subject);
     setRecommendations(updatedRecs);
     const updatedPath = getLearningPath(student.grade, student.board, student.stream, subject);
     setLearningPath(updatedPath);
+
+    // Keep active learning context in sync with the new subject's first chapter & topic
+    const chs = getChapters(student.grade, student.board, student.stream, subject);
+    const firstCh = chs[0];
+    const firstTop = firstCh?.topics[0];
+    if (firstCh && firstTop) {
+      setCurrentLearningContext((prev) => ({
+        ...prev,
+        subject,
+        chapter: firstCh.title,
+        chapterId: firstCh.id,
+        topic: firstTop.title,
+        topicId: firstTop.id
+      }));
+    } else {
+      setCurrentLearningContext((prev) => ({
+        ...prev,
+        subject
+      }));
+    }
+  };
+
+  // Explicit helper to switch topic context cleanly from anywhere in the app
+  const setTopicContext = (
+    subject: SubjectType,
+    chapter: string,
+    topic: string,
+    chapterId?: string,
+    topicId?: string,
+    difficulty?: DifficultyLevel
+  ) => {
+    setActiveSubjectState(subject);
+    setCurrentLearningContext((prev) => ({
+      ...prev,
+      subject,
+      chapter,
+      topic,
+      chapterId: chapterId || prev.chapterId,
+      topicId: topicId || prev.topicId,
+      difficulty: difficulty || prev.difficulty
+    }));
+  };
+
+  // Helper to transition to quiz view seamlessly for the active topic
+  const startQuizForCurrentTopic = (override?: Partial<CurrentLearningContext>) => {
+    if (override) {
+      setCurrentLearningContext((prev) => ({ ...prev, ...override }));
+      if (override.subject) {
+        setActiveSubjectState(override.subject);
+      }
+    }
+    setActiveTab('quiz');
   };
 
   // Comprehensive Academic Profile Switcher
@@ -214,6 +315,23 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setRecommendations(getRecommendations(normGrade, board, effectiveStream, nextSubject));
     setLearningPath(getLearningPath(normGrade, board, effectiveStream, nextSubject));
 
+    // Update learning context for the new curriculum
+    const newChs = getChapters(normGrade, board, effectiveStream, nextSubject);
+    const firstCh = newChs[0];
+    const firstTop = firstCh?.topics[0];
+    setCurrentLearningContext({
+      classLevel: normGrade,
+      board,
+      stream: effectiveStream,
+      subject: nextSubject,
+      chapter: firstCh ? firstCh.title : 'Chapter 1',
+      chapterId: firstCh?.id,
+      topic: firstTop ? firstTop.title : 'Topic 1',
+      topicId: firstTop?.id,
+      learningStyle: newPreferredStyle,
+      difficulty: newLevel
+    });
+
     // Persist to localStorage
     try {
       localStorage.setItem(
@@ -255,6 +373,13 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       } catch (e) {}
       return updated;
     });
+
+    // Keep active learning context in sync with the style change
+    setCurrentLearningContext((prev) => ({
+      ...prev,
+      learningStyle: style
+    }));
+
     setNotification({
       message: `Preferred learning style updated to "${style}". AI content adapted!`,
       type: 'info'
@@ -517,6 +642,18 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setUploadedMaterial(null);
     setUploadState('idle');
     setUploadError(null);
+    setCurrentLearningContext({
+      classLevel: 'Class 9',
+      board: 'CBSE',
+      stream: 'Not applicable',
+      subject: 'Mathematics',
+      chapter: 'Number Systems',
+      chapterId: 'cbse-9-math-ch1',
+      topic: 'Irrational Numbers and Decimal Expansions',
+      topicId: 'cbse-9-math-t1',
+      learningStyle: 'Simple',
+      difficulty: 'Beginner'
+    });
     try {
       localStorage.removeItem(STORAGE_KEY);
     } catch (e) {}
@@ -543,6 +680,10 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         uploadedMaterial,
         uploadState,
         uploadError,
+        currentLearningContext,
+        setCurrentLearningContext,
+        setTopicContext,
+        startQuizForCurrentTopic,
         setActiveTab,
         setActiveSubject,
         setPreferredStyle,

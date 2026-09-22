@@ -16,6 +16,7 @@ export const JudgeDemoTour: React.FC = () => {
     setJudgeDemoStep,
     setActiveTab,
     setActiveSubject,
+    setTopicContext,
     recordQuizResult
   } = useStudent();
 
@@ -67,8 +68,8 @@ export const JudgeDemoTour: React.FC = () => {
       instruction: 'Tutor context shifts to CS. Try "What is a binary tree?" or "Explain recursion" to see code and complexity.',
       actionText: 'Launch Adaptive Quiz',
       action: () => {
+        setTopicContext('Mathematics', 'Geometry', 'Triangles');
         setActiveTab('quiz');
-        setActiveSubject('Mathematics');
         setJudgeDemoStep(5);
       }
     },
@@ -105,6 +106,7 @@ export const JudgeDemoTour: React.FC = () => {
       instruction: 'The diagnostic score gauge reveals 58% accuracy and flags Geometry as a critical Weak Area.',
       actionText: 'Observe Adaptive Recalibration',
       action: () => {
+        setTopicContext('Mathematics', 'Geometry', 'Triangles');
         setActiveTab('adaptive');
         setJudgeDemoStep(7);
       }

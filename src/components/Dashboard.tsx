@@ -20,7 +20,7 @@ import { useStudent } from '../context/StudentContext';
 import { getTodaysLesson, getChapters } from '../services/curriculumService';
 
 export const Dashboard: React.FC = () => {
-  const { student, subjects, activities, activeSubject, setActiveTab, setActiveSubject } = useStudent();
+  const { student, subjects, activities, activeSubject, setActiveTab, setActiveSubject, currentLearningContext } = useStudent();
 
   const todaysLesson = getTodaysLesson(
     student.grade,
@@ -160,10 +160,10 @@ export const Dashboard: React.FC = () => {
                   {activeSubject} ({student.grade})
                 </div>
                 <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1E293B' }}>
-                  {todaysLesson.topic}
+                  {currentLearningContext.topic || todaysLesson.topic}
                 </h3>
                 <span style={{ fontSize: '0.78rem', color: '#64748B' }}>
-                  {todaysLesson.chapter}
+                  {currentLearningContext.chapter || todaysLesson.chapter}
                 </span>
               </div>
             </div>
