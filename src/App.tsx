@@ -17,6 +17,7 @@ import { AnalyticsView } from './components/AnalyticsView';
 import { UploadMaterialView } from './components/UploadMaterialView';
 import { ProfileModal } from './components/ProfileModal';
 import { JudgeDemoTour } from './components/JudgeDemoTour';
+import { PreAssessmentView } from './components/PreAssessmentView';
 import { AlertCircle, CheckCircle, Info, X, GraduationCap, Loader2, Sparkles } from 'lucide-react';
 
 const AppContent: React.FC = () => {
@@ -44,6 +45,8 @@ const AppContent: React.FC = () => {
         return <UploadMaterialView />;
       case 'syllabus-analysis':
         return <SyllabusAnalysisView />;
+      case 'pre-assessment':
+        return <PreAssessmentView />;
       case 'profile':
         return <ProfileModal />;
       default:

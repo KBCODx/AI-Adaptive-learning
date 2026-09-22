@@ -43,14 +43,13 @@ export const SyllabusAnalysisView: React.FC = () => {
 
   const handleStartTest = () => {
     setIsLoading(true);
-    // Set active tab to adaptive and active subject to current
-    setActiveTab('adaptive');
     if (currentSubject) {
       setActiveSubject(currentSubject);
     }
+    setActiveTab('pre-assessment');
     setTimeout(() => {
       setIsLoading(false);
-    }, 800);
+    }, 400);
   };
 
   const handleBack = () => {
@@ -357,7 +356,7 @@ export const SyllabusAnalysisView: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    <span>Start Test on Detected Topics</span>
+                    <span>Start Diagnostic Pre-Assessment</span>
                     <ArrowRight size={20} />
                   </>
                 )}

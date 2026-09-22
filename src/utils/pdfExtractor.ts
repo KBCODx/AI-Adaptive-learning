@@ -1,16 +1,51 @@
 // Native Browser PDF Text & Chapter Extractor using pdfjs-dist and binary stream fallback
 // Extracts readable text streams from PDF files and organizes them into a list of chapters.
 
-import * as pdfjsLib from 'pdfjs-dist/legacy/build/pdf';
+import * as pdfjsLib from 'pdfjs-dist';
+import pdfjsWorker from 'pdfjs-dist/build/pdf.worker.min.js?url';
 import { cleanExtractedText, extractChaptersFromText } from '../lib/aiSyllabusParser';
 import { SubjectType } from '../types';
 
-// Worker version - set to CDN for browser environments
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.js`;
+// Configure same-origin local worker to prevent CORS and SecurityError in browsers
+if (typeof window !== 'undefined' && pdfjsLib.GlobalWorkerOptions) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = pdfjsWorker;
+}
 
 export interface ExtractedSyllabus {
   rawText: string;
   chapters: string[];
+}
+
+/**
+ * Server-side fallback for PDF extraction: runs in Node.js where PDF.js has zero browser sandbox limitations
+ */
+async function extractTextViaServerApi(file: File): Promise<string> {
+  try {
+    const arrayBuffer = await file.arrayBuffer();
+    const bytes = new Uint8Array(arrayBuffer);
+    let binary = '';
+    const chunkSize = 8192;
+    for (let i = 0; i < bytes.byteLength; i += chunkSize) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, Math.min(i + chunkSize, bytes.byteLength)) as any);
+    }
+    const base64 = btoa(binary);
+
+    const res = await fetch('/api/ai/extract-pdf-text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ base64 })
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (data.success && typeof data.text === 'string' && data.text.length > 20) {
+        return data.text;
+      }
+    }
+  } catch (err) {
+    console.warn('Server-side PDF extractor fallback failed:', err);
+  }
+  return '';
 }
 
 /**
@@ -65,7 +100,7 @@ function extractTextFromBinaryBuffer(arrayBuffer: ArrayBuffer): string {
 }
 
 /**
- * Extracts plain text from PDF using pdf.js with Y-coordinate line grouping
+ * Extracts plain text from PDF using pdf.js with Y-coordinate line grouping and server fallback
  */
 export async function extractTextFromPDF(file: File, subject?: SubjectType): Promise<ExtractedSyllabus> {
   let fullText = '';
@@ -73,8 +108,9 @@ export async function extractTextFromPDF(file: File, subject?: SubjectType): Pro
   try {
     const arrayBuffer = await file.arrayBuffer();
 
+    // 1. Client-Side PDF extraction with local same-origin worker
     try {
-      const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+      const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(arrayBuffer) });
       const pdf = await loadingTask.promise;
 
       for (let i = 1; i <= pdf.numPages; i++) {
@@ -110,11 +146,18 @@ export async function extractTextFromPDF(file: File, subject?: SubjectType): Pro
         fullText += lines.join('\n') + '\n';
       }
     } catch (pdfjsErr) {
-      console.warn('pdfjs extraction failed, falling back to binary stream extractor:', pdfjsErr);
-      fullText = extractTextFromBinaryBuffer(arrayBuffer);
+      console.warn('Browser pdfjs extraction had an issue, falling back to server-side parser:', pdfjsErr);
     }
 
-    // If still empty, use fallback stream
+    // 2. Server-side Node PDF extraction fallback (100% reliable for complex/compressed PDFs)
+    if (!fullText.trim() || fullText.trim().length < 30) {
+      const serverText = await extractTextViaServerApi(file);
+      if (serverText.trim().length >= 30) {
+        fullText = serverText;
+      }
+    }
+
+    // 3. Binary buffer stream fallback if completely offline
     if (!fullText.trim()) {
       fullText = extractTextFromBinaryBuffer(arrayBuffer);
     }

@@ -15,6 +15,8 @@ import {
   SyllabusFile,
   ParsedMaterial,
   CurrentLearningContext,
+  PreAssessmentResult,
+  PreAssessmentQuestion,
   StudentProfile as AuthStudentProfile
 } from '../types';
 import {
@@ -105,6 +107,13 @@ export interface StudentContextType {
   ) => void;
   resetToDefault: () => void;
   clearNotification: () => void;
+  preAssessmentResult: PreAssessmentResult | null;
+  preAssessmentQuestions: PreAssessmentQuestion[];
+  isGeneratingAssessment: boolean;
+  setIsGeneratingAssessment: React.Dispatch<React.SetStateAction<boolean>>;
+  recordPreAssessmentResult: (result: PreAssessmentResult) => void;
+  clearPreAssessment: () => void;
+  setPreAssessmentQuestions: React.Dispatch<React.SetStateAction<PreAssessmentQuestion[]>>;
 }
 
 const StudentContext = createContext<StudentContextType | undefined>(undefined);
@@ -144,6 +153,11 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'warning' } | null>(null);
   const [judgeDemoStep, setJudgeDemoStep] = useState<number>(0);
   const [syllabusData, setSyllabusData] = useState<Record<string, any>>({});
+
+  // Pre-Assessment state
+  const [preAssessmentResult, setPreAssessmentResult] = useState<PreAssessmentResult | null>(null);
+  const [preAssessmentQuestions, setPreAssessmentQuestions] = useState<PreAssessmentQuestion[]>([]);
+  const [isGeneratingAssessment, setIsGeneratingAssessment] = useState<boolean>(false);
 
   // Material upload state
   const [uploadedMaterial, setUploadedMaterial] = useState<ParsedMaterial | null>(null);
@@ -489,12 +503,86 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         setSyllabusData({});
         setStudent((prev) => ({ ...prev, syllabusData: {}, syllabusUploaded: false }));
       }
+
+      // Restore pre-assessment result from localStorage
+      const userAssessKey = `gurumitra_pre_assessment_${user.id}`;
+      try {
+        const savedAssess = localStorage.getItem(userAssessKey);
+        if (savedAssess) {
+          setPreAssessmentResult(JSON.parse(savedAssess));
+        } else {
+          setPreAssessmentResult(null);
+        }
+      } catch {
+        setPreAssessmentResult(null);
+      }
     } else {
-      // User logged out — reset syllabus state completely
+      // User logged out — reset syllabus and assessment state completely
       setSyllabusData({});
       setStudent((prev) => ({ ...prev, syllabusData: {}, syllabusUploaded: false }));
+      setPreAssessmentResult(null);
     }
   }, [user]);
+
+  const recordPreAssessmentResult = (result: PreAssessmentResult) => {
+    setPreAssessmentResult(result);
+    const userId = user?.id || 'guest_student';
+    try {
+      localStorage.setItem(`gurumitra_pre_assessment_${userId}`, JSON.stringify(result));
+    } catch (e) {
+      console.warn('Could not persist pre-assessment to localStorage:', e);
+    }
+
+    // Update student diagnostic baseline level
+    const newLevel: DifficultyLevel = result.overallScore <= 50 ? 'Beginner' : result.overallScore <= 75 ? 'Intermediate' : 'Advanced';
+    setStudent(prev => ({
+      ...prev,
+      level: newLevel,
+      overallAccuracy: result.knowledgeScore
+    }));
+
+    // Seamlessly adapt Recommendations based on identified diagnostic gaps
+    if (result.identifiedGaps.length > 0) {
+      const adaptedRecs: RecommendationItem[] = result.identifiedGaps.slice(0, 4).map((gap, i) => ({
+        id: `rec_diag_${gap.id}_${i}`,
+        topic: gap.topic,
+        subject: gap.subject,
+        difficulty: gap.priority === 'High Priority' ? 'Beginner' : 'Intermediate',
+        reason: gap.prerequisite
+          ? `Diagnostic Gap: Master ${gap.prerequisite} before returning to ${gap.chapterName}.`
+          : `Diagnostic Gap (${gap.accuracy}% accuracy in pre-assessment).`,
+        duration: '15 mins',
+        priority: gap.priority === 'High Priority' ? 'High Priority' : 'Practice',
+        completed: false
+      }));
+      setRecommendations(prev => [...adaptedRecs, ...prev.filter(p => !p.id.startsWith('rec_diag_'))]);
+    }
+
+    // Add activity record
+    const newActivity: ActivityItem = {
+      id: `act_${Date.now()}`,
+      type: 'adaptation',
+      title: 'Diagnostic Pre-Assessment Completed',
+      subtitle: `Scored ${result.overallScore}% (${result.learningLevel}) across ${result.totalQuestions} questions.`,
+      time: 'Just now',
+      tag: 'Pre-Assessment',
+      badgeType: 'High Priority'
+    };
+    setActivities(prev => [newActivity, ...prev]);
+
+    setNotification({
+      message: `Diagnostic pre-assessment complete! Scored ${result.overallScore}%. Adaptive learning path updated.`,
+      type: 'success'
+    });
+  };
+
+  const clearPreAssessment = () => {
+    setPreAssessmentResult(null);
+    const userId = user?.id || 'guest_student';
+    try {
+      localStorage.removeItem(`gurumitra_pre_assessment_${userId}`);
+    } catch {}
+  };
 
   const clearNotification = () => setNotification(null);
 
@@ -766,7 +854,14 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         startQuizForCurrentTopic,
         setAcademicProfile,
         resetToDefault,
-        clearNotification
+        clearNotification,
+        preAssessmentResult,
+        preAssessmentQuestions,
+        isGeneratingAssessment,
+        setIsGeneratingAssessment,
+        recordPreAssessmentResult,
+        clearPreAssessment,
+        setPreAssessmentQuestions
       }}
     >
       {children}
