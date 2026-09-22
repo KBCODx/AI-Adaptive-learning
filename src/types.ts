@@ -1,8 +1,50 @@
 export type LearningStyle = 'Simple' | 'Analogy' | 'Visual' | 'Exam-oriented';
 
-export type SubjectType = 'Mathematics' | 'Science' | 'English' | 'Computer Science' | 'Social Science';
+export type SubjectType =
+  | 'Mathematics'
+  | 'Physics'
+  | 'Chemistry'
+  | 'Biology'
+  | 'English'
+  | 'Computer Science'
+  | 'Social Science'
+  | 'Accountancy'
+  | 'Business Studies'
+  | 'Economics';
 
 export type DifficultyLevel = 'Beginner' | 'Intermediate' | 'Advanced';
+
+export type BoardType = 'CBSE' | 'ICSE' | 'State Board' | 'IB' | 'IGCSE';
+
+export type StreamType = 'Science' | 'Commerce' | 'Humanities';
+
+export type ClassLevel =
+  | 'Class 6'
+  | 'Class 7'
+  | 'Class 8'
+  | 'Class 9'
+  | 'Class 10'
+  | 'Class 11'
+  | 'Class 12';
+
+export interface StudentProfile {
+  id: string;
+  name: string;
+  email: string;
+  grade: string;
+  level: DifficultyLevel;
+  preferredSubjects: SubjectType[];
+  preferredStyle: LearningStyle;
+  isDemo?: boolean;
+  emailVerified?: boolean;
+  createdAt: string;
+  streak: number;
+  totalPoints: number;
+  rank: number;
+  board?: BoardType;
+  stream?: StreamType;
+  classLevel?: ClassLevel;
+}
 
 export interface SubjectData {
   id: string;
@@ -71,6 +113,9 @@ export interface QuizQuestion {
   correctIndex: number;
   explanation: string;
   hint?: string;
+  chapter?: string;
+  board?: BoardType;
+  classLevel?: ClassLevel;
 }
 
 export interface QuizResult {

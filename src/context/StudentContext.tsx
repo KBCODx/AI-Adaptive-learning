@@ -3,13 +3,17 @@ import {
   LearningStyle,
   SubjectType,
   DifficultyLevel,
+  BoardType,
+  StreamType,
+  ClassLevel,
   SubjectData,
   RecommendationItem,
   StudyPlanItem,
   LearningPathNode,
   ActivityItem,
   QuizResult,
-  SyllabusFile
+  SyllabusFile,
+  StudentProfile as AuthStudentProfile
 } from '../types';
 import {
   INITIAL_SUBJECTS,
@@ -24,16 +28,11 @@ import { supabase } from '../lib/supabase';
 import { extractTextFromPDF } from '../utils/pdfExtractor';
 import { parseSyllabusWithAI, getFallbackSyllabusParse } from '../lib/aiSyllabusParser';
 
-export interface StudentProfile {
-  name: string;
-  grade: string;
-  level: DifficultyLevel;
+// Extend the AuthStudentProfile with client-specific fields
+export interface StudentProfile extends AuthStudentProfile {
   streak: number;
-  overallProgress: number;
-  overallAccuracy: number;
-  completedLessons: number;
-  xp: number;
-  preferredStyle: LearningStyle;
+  totalPoints: number;
+  rank: number;
   syllabusUploaded: boolean;
   syllabusData?: Record<string, {
     fileName: string;
@@ -47,49 +46,28 @@ export interface StudentProfile {
   }>;
 }
 
-interface StudentContextType {
-  student: StudentProfile;
-  subjects: SubjectData[];
-  recommendations: RecommendationItem[];
-  studyPlan: StudyPlanItem[];
-  learningPath: LearningPathNode[];
-  activities: ActivityItem[];
-  activeTab: string;
-  activeSubject: SubjectType;
-  lastQuizResult: QuizResult | null;
-  notification: { message: string; type: 'success' | 'info' | 'warning' } | null;
-  judgeDemoStep: number;
-  syllabusData: Record<string, any>;
-  syllabusUploaded: boolean;
-  setActiveTab: (tab: string) => void;
-  setActiveSubject: (subject: SubjectType) => void;
-  setPreferredStyle: (style: LearningStyle) => void;
-  updateProfile: (name: string, grade: string, style: LearningStyle) => void;
-  toggleStudyPlanItem: (id: string) => void;
-  recordQuizResult: (result: QuizResult) => void;
-  setJudgeDemoStep: (step: number) => void;
-  completeSyllabusSetup: (files: Record<string, any>) => Promise<any>;
-  extractAndAnalyzeTopics: (text: string, subject: SubjectType) => string[];
-  setSyllabusAnalysis: (subject: string, analysisData: any) => void;
-  resetToDefault: () => void;
-  clearNotification: () => void;
-}
-
 const StudentContext = createContext<StudentContextType | undefined>(undefined);
 
 export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
 
+  // Initialize student profile with data from auth user (if available) and defaults for client-specific fields
   const [student, setStudent] = useState<StudentProfile>({
+    // Auth fields (from user or defaults)
+    id: user ? user.id : 'guest_student',
     name: user ? user.name : 'Khushi Dixit',
+    email: user ? user.email : '',
     grade: user ? user.grade : '10th',
     level: user ? user.level : 'Intermediate',
-    streak: 4,
-    overallProgress: 76,
-    overallAccuracy: 82,
-    completedLessons: 24,
-    xp: 1420,
+    preferredSubjects: user ? user.preferredSubjects : ['Mathematics', 'Science'],
     preferredStyle: user ? user.preferredStyle : 'Simple',
+    isDemo: user ? user.isDemo : false,
+    emailVerified: user ? user.emailVerified : true,
+    createdAt: user ? user.createdAt : new Date().toISOString(),
+    // Client-specific fields with defaults
+    streak: 4,
+    totalPoints: 1420,
+    rank: 76,
     syllabusUploaded: false,
     syllabusData: {}
   });
@@ -265,10 +243,18 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     if (user) {
       setStudent((prev) => ({
         ...prev,
+        // Update auth-dependent fields
+        id: user.id,
         name: user.name,
+        email: user.email,
         grade: user.grade || '10th',
         level: user.level || 'Intermediate',
-        preferredStyle: user.preferredStyle || 'Simple'
+        preferredSubjects: user.preferredSubjects,
+        preferredStyle: user.preferredStyle,
+        isDemo: user.isDemo,
+        emailVerified: user.emailVerified,
+        createdAt: user.created_at || new Date().toISOString()
+        // Note: streak, totalPoints, rank, board, stream, classLevel are not in auth user, so we keep existing values
       }));
 
       // If user selected preferred subjects, set active subject to first one if available
@@ -488,15 +474,21 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
 
   const resetToDefault = () => {
     setStudent({
+      // Auth fields (from user or defaults)
+      id: user ? user.id : 'guest_student',
       name: user ? user.name : 'Khushi Dixit',
+      email: user ? user.email : '',
       grade: user ? user.grade : '10th',
       level: user ? user.level : 'Intermediate',
-      streak: 4,
-      overallProgress: 76,
-      overallAccuracy: 82,
-      completedLessons: 24,
-      xp: 1420,
+      preferredSubjects: user ? user.preferredSubjects : ['Mathematics', 'Science'],
       preferredStyle: user ? user.preferredStyle : 'Simple',
+      isDemo: user ? user.isDemo : false,
+      emailVerified: user ? user.emailVerified : true,
+      createdAt: user ? user.createdAt : new Date().toISOString(),
+      // Client-specific fields with defaults
+      streak: 4,
+      totalPoints: 1420,
+      rank: 76,
       syllabusUploaded: false,
       syllabusData: {}
     });
