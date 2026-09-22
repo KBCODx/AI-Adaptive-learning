@@ -20,11 +20,12 @@ export const RecommendationsView: React.FC = () => {
     toggleStudyPlanItem,
     setActiveTab,
     setActiveSubject,
+    setTopicContext,
     student
   } = useStudent();
 
   const handleStartRecommendation = (rec: RecommendationItem) => {
-    setActiveSubject(rec.subject);
+    setTopicContext(rec.subject, rec.topic, rec.topic, undefined, undefined, rec.difficulty);
     setActiveTab('adaptive');
   };
 

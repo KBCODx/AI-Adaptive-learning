@@ -1,69 +1,75 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   UploadCloud,
   FileText,
-  Image,
-  Video,
   FileCode,
   CheckCircle2,
   Sparkles,
   ArrowRight,
   Bot,
-  Layers,
   ChevronDown,
-  RotateCcw
+  RotateCcw,
+  AlertCircle,
+  FileCheck,
+  MessageSquareQuote
 } from 'lucide-react';
 import { useStudent } from '../context/StudentContext';
 
 export const UploadMaterialView: React.FC = () => {
-  const { setActiveTab, setActiveSubject } = useStudent();
-  const [selectedFormat, setSelectedFormat] = useState<'PDF' | 'Notes' | 'Image' | 'YouTube'>('PDF');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisProgress, setAnalysisProgress] = useState(0);
-  const [isAnalyzed, setIsAnalyzed] = useState(false);
+  const {
+    setActiveTab,
+    uploadedMaterial,
+    uploadState,
+    uploadError,
+    processAndSetFile,
+    removeUploadedMaterial,
+    clearUploadError
+  } = useStudent();
+
+  const [selectedFormat, setSelectedFormat] = useState<'PDF' | 'Notes' | 'DOCX'>('PDF');
+  const [isDragOver, setIsDragOver] = useState(false);
   const [expandedTopic, setExpandedTopic] = useState<number | null>(0);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const topicsFound = [
-    {
-      title: 'Covalent Bonding in Carbon',
-      concepts: 'Tetravalency, Catenaion property, Single, double, and triple bonds.'
-    },
-    {
-      title: 'Properties of Carbon Allotropes',
-      concepts: 'Diamond (rigid tetrahedral 3D), Graphite (hexagonal layers), Fullerenes.'
-    },
-    {
-      title: 'Homologous Series',
-      concepts: 'Successive difference of -CH2- and 14 u, gradation in physical boiling points.'
-    },
-    {
-      title: 'Functional Groups & IUPAC',
-      concepts: 'Alcohol (-OH), Carboxylic Acid (-COOH), Aldehyde (-CHO), Ketone (>C=O).'
-    },
-    {
-      title: 'Chemical Reactions: Combustion & Esterification',
-      concepts: 'Oxidation using alkaline KMnO4, addition reactions with Ni catalyst, soap formation.'
+  const isAnalyzing = uploadState === 'uploading' || uploadState === 'analyzing';
+  const isAnalyzed = uploadState === 'ready' && !!uploadedMaterial;
+
+  const handleTriggerBrowse = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
     }
-  ];
+  };
 
-  const handleStartAnalysis = () => {
-    setIsAnalyzing(true);
-    setAnalysisProgress(15);
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      const file = files[0];
+      try {
+        await processAndSetFile(file);
+      } catch {
+        // Handled in context
+      }
+    }
+    // Reset file input value so same file can be re-uploaded if desired
+    if (e.target) e.target.value = '';
+  };
 
-    const step1 = setTimeout(() => setAnalysisProgress(45), 600);
-    const step2 = setTimeout(() => setAnalysisProgress(70), 1200);
-    const step3 = setTimeout(() => setAnalysisProgress(85), 1800);
-    const step4 = setTimeout(() => {
-      setAnalysisProgress(100);
-      setIsAnalyzing(false);
-      setIsAnalyzed(true);
-    }, 2400);
+  const handleDrop = async (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      const file = e.dataTransfer.files[0];
+      try {
+        await processAndSetFile(file);
+      } catch {
+        // Handled in context
+      }
+    }
   };
 
   const handleReset = () => {
-    setIsAnalyzing(false);
-    setIsAnalyzed(false);
-    setAnalysisProgress(0);
+    removeUploadedMaterial();
+    clearUploadError();
   };
 
   return (
@@ -75,47 +81,95 @@ export const UploadMaterialView: React.FC = () => {
       flexDirection: 'column',
       gap: '24px'
     }}>
-      {/* Header matching Screenshot Panel 4 */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      {/* Hidden genuine file input */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileChange}
+        accept=".pdf,.doc,.docx,.txt,.text,.md,.csv,.json"
+        style={{ display: 'none' }}
+      />
+
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
         <div>
-          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#4F46E5', textTransform: 'uppercase' }}>
+          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#4F46E5', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
             AI Curriculum Ingestion
           </span>
           <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: '#1E293B', marginTop: '2px' }}>
             Upload Learning Material
           </h1>
           <p style={{ color: '#64748B', fontSize: '0.92rem', margin: 0 }}>
-            Add your textbook chapter, class notes, or lecture video and let GuruMitra build your adaptive plan.
+            Upload your textbook chapter, class notes, or assignment and let GuruMitra build your adaptive plan and tutor context.
           </p>
         </div>
 
-        {isAnalyzed && (
+        {(isAnalyzed || uploadState === 'error') && (
           <button onClick={handleReset} className="btn btn-outline" style={{ padding: '8px 14px', fontSize: '0.82rem' }}>
             <RotateCcw size={14} />
-            <span>Upload Another</span>
+            <span>Upload Another File</span>
           </button>
         )}
       </div>
 
+      {/* Error state if file processing failed */}
+      {uploadState === 'error' && (
+        <div style={{
+          padding: '16px 20px',
+          borderRadius: '14px',
+          backgroundColor: '#FEF2F2',
+          border: '1.5px solid #FECACA',
+          color: '#991B1B',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <AlertCircle size={20} color="#EF4444" />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: '0.9rem' }}>File Processing Notice</div>
+              <div style={{ fontSize: '0.82rem', color: '#B91C1C' }}>
+                {uploadError || "Couldn't read this file. Please try another supported file (PDF, TXT, DOCX)."}
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={handleTriggerBrowse}
+            className="btn btn-outline"
+            style={{ padding: '6px 14px', fontSize: '0.8rem', borderColor: '#FCA5A5', color: '#991B1B' }}
+          >
+            Select Another File
+          </button>
+        </div>
+      )}
+
       {!isAnalyzed && !isAnalyzing ? (
-        /* PANEL 4: Upload Area */
+        /* Upload Area */
         <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
           {/* Drag & Drop Card */}
           <div
             className="card"
             style={{
               padding: '60px 32px',
-              border: '2px dashed #C7D2FE',
-              backgroundColor: '#FFFFFF',
+              border: isDragOver ? '2.5px dashed #4F46E5' : '2px dashed #C7D2FE',
+              backgroundColor: isDragOver ? '#EEF2FF' : '#FFFFFF',
               display: 'flex',
               flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
               textAlign: 'center',
               gap: '16px',
-              cursor: 'pointer'
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
             }}
-            onClick={handleStartAnalysis}
+            onClick={handleTriggerBrowse}
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragOver(true);
+            }}
+            onDragLeave={() => setIsDragOver(false)}
+            onDrop={handleDrop}
           >
             <div style={{
               width: '74px',
@@ -125,7 +179,8 @@ export const UploadMaterialView: React.FC = () => {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              color: '#4F46E5'
+              color: '#4F46E5',
+              boxShadow: '0 4px 14px rgba(79, 70, 229, 0.15)'
             }}>
               <UploadCloud size={36} />
             </div>
@@ -138,24 +193,24 @@ export const UploadMaterialView: React.FC = () => {
                 or <span style={{ color: '#4F46E5', fontWeight: 700, textDecoration: 'underline' }}>Browse Files</span> on your computer
               </p>
               <p style={{ fontSize: '0.75rem', color: '#94A3B8', marginTop: '6px' }}>
-                Supports PDF, TXT, Handwritten notes (OCR), and YouTube links
+                Supports PDF, DOCX, TXT, and Markdown files
               </p>
             </div>
 
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                handleStartAnalysis();
+                handleTriggerBrowse();
               }}
               className="btn btn-primary"
               style={{ padding: '12px 28px', marginTop: '8px' }}
             >
-              <span>Scan & Extract with GuruMitra AI</span>
+              <span>Select File & Scan with GuruMitra AI</span>
               <Sparkles size={16} />
             </button>
           </div>
 
-          {/* Format Selector Pills matching screenshot */}
+          {/* Format Selector Pills */}
           <div style={{
             display: 'flex',
             justifyContent: 'center',
@@ -163,17 +218,19 @@ export const UploadMaterialView: React.FC = () => {
             flexWrap: 'wrap'
           }}>
             {[
-              { id: 'PDF', icon: FileText, label: 'PDF Chapter', color: '#EF4444', bg: '#FEE2E2' },
-              { id: 'Notes', icon: FileCode, label: 'Text / Notes', color: '#3B82F6', bg: '#DBEAFE' },
-              { id: 'Image', icon: Image, label: 'Handwritten Image', color: '#10B981', bg: '#D1FAE5' },
-              { id: 'YouTube', icon: Video, label: 'YouTube Link', color: '#DC2626', bg: '#FEE2E2' },
+              { id: 'PDF', icon: FileText, label: 'PDF Document (.pdf)', color: '#EF4444', bg: '#FEE2E2' },
+              { id: 'DOCX', icon: FileCode, label: 'Word Document (.docx)', color: '#2563EB', bg: '#DBEAFE' },
+              { id: 'Notes', icon: FileCheck, label: 'Plain Text / Notes (.txt, .md)', color: '#059669', bg: '#D1FAE5' }
             ].map((fmt) => {
               const Icon = fmt.icon;
               const isSelected = selectedFormat === fmt.id;
               return (
                 <button
                   key={fmt.id}
-                  onClick={() => setSelectedFormat(fmt.id as any)}
+                  onClick={() => {
+                    setSelectedFormat(fmt.id as any);
+                    handleTriggerBrowse();
+                  }}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -186,7 +243,8 @@ export const UploadMaterialView: React.FC = () => {
                     fontWeight: 700,
                     fontSize: '0.85rem',
                     cursor: 'pointer',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.03)'
+                    boxShadow: '0 2px 8px rgba(0,0,0,0.03)',
+                    transition: 'all 0.15s ease'
                   }}
                 >
                   <Icon size={16} color={fmt.color} />
@@ -196,185 +254,247 @@ export const UploadMaterialView: React.FC = () => {
             })}
           </div>
         </div>
-      ) : (
-        /* PANEL 5: AI Analysis / Topic Extraction State */
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
-          {/* Top Analysis Progress Card */}
-          <div className="card" style={{ padding: '28px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
-              <div style={{
-                width: '36px',
-                height: '36px',
-                borderRadius: '10px',
-                background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                color: '#FFFFFF'
-              }}>
-                <Bot size={20} />
-              </div>
-              <div>
-                <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#1E293B', margin: 0 }}>
-                  {isAnalyzing ? 'AI is analyzing your material...' : 'Analysis Complete! Concepts Extracted'}
-                </h3>
-                <p style={{ fontSize: '0.85rem', color: '#64748B', margin: 0 }}>
-                  We're extracting key topics, concepts and creating a personalized learning path for you.
-                </p>
-              </div>
-            </div>
-
-            <div style={{ marginBottom: '12px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', fontWeight: 700, marginBottom: '6px' }}>
-                <span style={{ color: '#64748B' }}>Concept Extraction Progress</span>
-                <span style={{ color: '#4F46E5' }}>{analysisProgress}%</span>
-              </div>
-              <div className="progress-bar-container" style={{ height: '8px' }}>
-                <div className="progress-bar-fill" style={{ width: `${analysisProgress}%` }} />
-              </div>
-            </div>
-          </div>
-
-          {/* Split Layout: Checklist + Topics Found (Matching Panel 5 screenshot!) */}
+      ) : isAnalyzing ? (
+        /* Real Analyzing Progress State */
+        <div className="card" style={{ padding: '36px', textAlign: 'center' }}>
           <div style={{
-            display: 'grid',
-            gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1.8fr)',
-            gap: '24px'
-          }}>
-            {/* Extracting Steps Checklist */}
-            <div className="card" style={{ padding: '24px' }}>
-              <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1E293B', marginBottom: '16px' }}>
-                Extracting...
-              </h4>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                {[
-                  { label: 'Identifying topics', done: analysisProgress >= 25 },
-                  { label: 'Finding key concepts', done: analysisProgress >= 50 },
-                  { label: 'Generating summary', done: analysisProgress >= 75 },
-                  { label: 'Creating practice questions', done: analysisProgress >= 100 },
-                ].map((step, idx) => (
-                  <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div style={{
-                      width: '22px',
-                      height: '22px',
-                      borderRadius: '50%',
-                      backgroundColor: step.done ? '#10B981' : '#F1F5F9',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      color: '#FFFFFF'
-                    }}>
-                      {step.done ? <CheckCircle2 size={16} /> : <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#94A3B8' }} />}
-                    </div>
-                    <span style={{
-                      fontSize: '0.88rem',
-                      fontWeight: step.done ? 700 : 500,
-                      color: step.done ? '#1E293B' : '#94A3B8'
-                    }}>
-                      {step.label}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Topics Found Accordion matching Screenshot Panel 5 */}
-            <div className="card" style={{ padding: '24px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
-                <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1E293B', margin: 0 }}>
-                  Topics Found ({topicsFound.length})
-                </h4>
-                <span className="badge badge-on-track" style={{ fontSize: '0.65rem' }}>
-                  High Quality Scan
-                </span>
-              </div>
-
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {topicsFound.map((topic, i) => {
-                  const isExpanded = expandedTopic === i;
-                  return (
-                    <div
-                      key={i}
-                      style={{
-                        borderRadius: '12px',
-                        border: '1px solid #E2E8F0',
-                        overflow: 'hidden',
-                        backgroundColor: isExpanded ? '#F8FAFC' : '#FFFFFF'
-                      }}
-                    >
-                      <button
-                        onClick={() => setExpandedTopic(isExpanded ? null : i)}
-                        style={{
-                          width: '100%',
-                          padding: '12px 16px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          border: 'none',
-                          background: 'transparent',
-                          cursor: 'pointer',
-                          textAlign: 'left'
-                        }}
-                      >
-                        <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1E293B' }}>
-                          {topic.title}
-                        </span>
-                        <ChevronDown
-                          size={16}
-                          color="#64748B"
-                          style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
-                        />
-                      </button>
-
-                      {isExpanded && (
-                        <div style={{ padding: '0 16px 14px', fontSize: '0.8rem', color: '#64748B', lineHeight: '1.4' }}>
-                          <strong>Sub-concepts: </strong>{topic.concepts}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Mascot Banner (Matching Screenshot Panel 5!) */}
-          <div className="card" style={{
-            padding: '20px 24px',
-            background: 'linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 100%)',
-            border: '1.5px solid #C7D2FE',
+            width: '64px',
+            height: '64px',
+            borderRadius: '16px',
+            background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
+            color: '#FFFFFF',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between',
-            flexWrap: 'wrap',
-            gap: '16px'
+            justifyContent: 'center',
+            margin: '0 auto 18px',
+            boxShadow: '0 8px 24px rgba(79, 70, 229, 0.3)',
+            animation: 'pulse-soft 1.5s infinite ease-in-out'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-              <span style={{ fontSize: '2rem' }}>🤖</span>
-              <div>
-                <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#4F46E5' }}>
-                  Your material has been analyzed!
+            <Bot size={32} />
+          </div>
+          <h3 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#1E293B', marginBottom: '8px' }}>
+            {uploadState === 'uploading' ? 'Reading your material...' : 'GuruMitra AI is analyzing your material...'}
+          </h3>
+          <p style={{ fontSize: '0.88rem', color: '#64748B', maxWidth: '460px', margin: '0 auto 24px' }}>
+            Extracting text structure, key concepts, formulas, and indexing topics for your interactive AI Tutor session.
+          </p>
+
+          <div style={{ maxWidth: '520px', margin: '0 auto' }}>
+            <div className="progress-bar-container" style={{ height: '10px' }}>
+              <div
+                className="progress-bar-fill"
+                style={{
+                  width: uploadState === 'uploading' ? '45%' : '85%',
+                  transition: 'width 0.6s ease'
+                }}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', color: '#94A3B8', marginTop: '8px' }}>
+              <span>{uploadState === 'uploading' ? 'Reading file buffer...' : 'Analyzing key topics & concepts...'}</span>
+              <span>{uploadState === 'uploading' ? '45%' : '85%'}</span>
+            </div>
+          </div>
+        </div>
+      ) : (
+        /* Genuine Extracted Material State */
+        uploadedMaterial && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            {/* Top Info Card */}
+            <div className="card" style={{ padding: '24px 28px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '16px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                  <div style={{
+                    width: '44px',
+                    height: '44px',
+                    borderRadius: '12px',
+                    background: '#ECFDF5',
+                    border: '1px solid #A7F3D0',
+                    color: '#059669',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}>
+                    <FileCheck size={24} />
+                  </div>
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#1E293B', margin: 0 }}>
+                        {uploadedMaterial.fileName}
+                      </h3>
+                      <span className="badge badge-on-track" style={{ fontSize: '0.7rem' }}>
+                        Ready in AI Tutor
+                      </span>
+                    </div>
+                    <p style={{ fontSize: '0.82rem', color: '#64748B', margin: '4px 0 0' }}>
+                      {uploadedMaterial.fileSizeFormatted} • {uploadedMaterial.wordCount} words • Uploaded at {uploadedMaterial.uploadedAt}
+                    </p>
+                  </div>
                 </div>
-                <p style={{ fontSize: '0.82rem', color: '#4338CA', margin: 0 }}>
-                  Ready for a personalized adaptive learning experience.
-                </p>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                  <button
+                    onClick={() => setActiveTab('tutor')}
+                    className="btn btn-primary"
+                    style={{ padding: '9px 18px', fontSize: '0.85rem' }}
+                  >
+                    <MessageSquareQuote size={16} />
+                    <span>Ask AI Tutor About This</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Summary Preview */}
+              <div style={{
+                marginTop: '16px',
+                padding: '12px 16px',
+                backgroundColor: '#F8FAFC',
+                borderRadius: '12px',
+                border: '1px solid #E2E8F0',
+                fontSize: '0.86rem',
+                color: '#334155',
+                lineHeight: '1.5'
+              }}>
+                <strong style={{ color: '#4F46E5' }}>Document Summary: </strong>
+                {uploadedMaterial.summaryPreview}
               </div>
             </div>
 
-            <button
-              onClick={() => {
-                setActiveSubject('Science');
-                setActiveTab('adaptive');
-              }}
-              className="btn btn-primary"
-              style={{ padding: '10px 22px' }}
-            >
-              <span>Start Adaptive Study</span>
-              <ArrowRight size={16} />
-            </button>
+            {/* Split Layout: Extraction Summary + Topics Found */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'minmax(0, 1.2fr) minmax(0, 1.8fr)',
+              gap: '24px'
+            }}>
+              {/* Extraction Verification Checklist */}
+              <div className="card" style={{ padding: '24px' }}>
+                <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1E293B', marginBottom: '16px' }}>
+                  Ingestion Checklist
+                </h4>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {[
+                    { label: 'Text stream extraction complete', done: true },
+                    { label: `Identified ${uploadedMaterial.topics.length} key sections`, done: true },
+                    { label: 'Vocabulary & glossary indexed', done: true },
+                    { label: 'Context synchronized with AI Tutor', done: true }
+                  ].map((step, idx) => (
+                    <div key={idx} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                      <div style={{
+                        width: '22px',
+                        height: '22px',
+                        borderRadius: '50%',
+                        backgroundColor: '#10B981',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#FFFFFF'
+                      }}>
+                        <CheckCircle2 size={16} />
+                      </div>
+                      <span style={{ fontSize: '0.88rem', fontWeight: 600, color: '#1E293B' }}>
+                        {step.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Topics Found Accordion */}
+              <div className="card" style={{ padding: '24px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
+                  <h4 style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1E293B', margin: 0 }}>
+                    Topics Found ({uploadedMaterial.topics.length})
+                  </h4>
+                  <span className="badge badge-info" style={{ fontSize: '0.68rem' }}>
+                    Extracted from File
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {uploadedMaterial.topics.map((topic, i) => {
+                    const isExpanded = expandedTopic === i;
+                    return (
+                      <div
+                        key={i}
+                        style={{
+                          borderRadius: '12px',
+                          border: '1px solid #E2E8F0',
+                          overflow: 'hidden',
+                          backgroundColor: isExpanded ? '#F8FAFC' : '#FFFFFF'
+                        }}
+                      >
+                        <button
+                          onClick={() => setExpandedTopic(isExpanded ? null : i)}
+                          style={{
+                            width: '100%',
+                            padding: '12px 16px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            border: 'none',
+                            background: 'transparent',
+                            cursor: 'pointer',
+                            textAlign: 'left'
+                          }}
+                        >
+                          <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1E293B' }}>
+                            {topic.title}
+                          </span>
+                          <ChevronDown
+                            size={16}
+                            color="#64748B"
+                            style={{ transform: isExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}
+                          />
+                        </button>
+
+                        {isExpanded && (
+                          <div style={{ padding: '0 16px 14px', fontSize: '0.82rem', color: '#64748B', lineHeight: '1.4' }}>
+                            <strong>Core Concepts: </strong>{topic.concepts}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Mascot Banner */}
+            <div className="card" style={{
+              padding: '20px 24px',
+              background: 'linear-gradient(135deg, #EEF2FF 0%, #F5F3FF 100%)',
+              border: '1.5px solid #C7D2FE',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '16px'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <span style={{ fontSize: '2rem' }}>🤖</span>
+                <div>
+                  <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#4F46E5' }}>
+                    "{uploadedMaterial.fileName}" is ready in your session!
+                  </div>
+                  <p style={{ fontSize: '0.82rem', color: '#4338CA', margin: 0 }}>
+                    Switch to the AI Tutor to ask questions directly about this material.
+                  </p>
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button
+                  onClick={() => setActiveTab('tutor')}
+                  className="btn btn-primary"
+                  style={{ padding: '10px 22px' }}
+                >
+                  <span>Chat with AI Tutor</span>
+                  <ArrowRight size={16} />
+                </button>
+              </div>
+            </div>
           </div>
-        </div>
+        )
       )}
     </div>
   );

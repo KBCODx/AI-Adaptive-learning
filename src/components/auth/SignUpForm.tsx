@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { User, Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Loader2, BookOpen, Sparkles, Check } from 'lucide-react';
+import { User, Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Loader2, Check, CheckCircle2, Info } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { DifficultyLevel, SubjectType } from '../../types';
 
@@ -22,7 +22,7 @@ const AVAILABLE_SUBJECTS: { name: SubjectType; icon: string }[] = [
 ];
 
 export const SignUpForm: React.FC<SignUpFormProps> = ({ onSwitchToLogin }) => {
-  const { signup, authError, clearError } = useAuth();
+  const { signUp, authError, clearError, isConfigured } = useAuth();
 
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -36,6 +36,7 @@ export const SignUpForm: React.FC<SignUpFormProps> = ({ onSwitchToLogin }) => {
     'Science'
   ]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmationNotice, setConfirmationNotice] = useState<string | null>(null);
 
   // Client-side validation errors
   const [errors, setErrors] = useState<{
@@ -80,8 +81,8 @@ export const SignUpForm: React.FC<SignUpFormProps> = ({ onSwitchToLogin }) => {
 
     if (!password) {
       newErrors.password = 'Please enter a password.';
-    } else if (password.length < 8) {
-      newErrors.password = 'Password must contain at least 8 characters.';
+    } else if (password.length < 6) {
+      newErrors.password = 'Password must contain at least 6 characters.';
     }
 
     if (!confirmPassword) {
@@ -101,6 +102,7 @@ export const SignUpForm: React.FC<SignUpFormProps> = ({ onSwitchToLogin }) => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     clearError();
+    setConfirmationNotice(null);
 
     if (!validate()) {
       return;
@@ -108,7 +110,7 @@ export const SignUpForm: React.FC<SignUpFormProps> = ({ onSwitchToLogin }) => {
 
     setIsSubmitting(true);
     try {
-      await signup({
+      const res = await signUp({
         name,
         email,
         password,
@@ -117,6 +119,12 @@ export const SignUpForm: React.FC<SignUpFormProps> = ({ onSwitchToLogin }) => {
         level,
         preferredSubjects
       });
+
+      if (res.success && res.requiresConfirmation) {
+        setConfirmationNotice(
+          'Account created successfully! Please check your email to confirm your account before logging in.'
+        );
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -140,6 +148,59 @@ export const SignUpForm: React.FC<SignUpFormProps> = ({ onSwitchToLogin }) => {
         </p>
       </div>
 
+      {/* Supabase Configuration Warning */}
+      {!isConfigured && (
+        <div style={{
+          marginBottom: '16px',
+          padding: '12px 14px',
+          borderRadius: '12px',
+          background: '#FFFBEB',
+          border: '1px solid #FCD34D',
+          color: '#92400E',
+          fontSize: '0.82rem',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '8px'
+        }}>
+          <Info size={16} style={{ flexShrink: 0, marginTop: '2px', color: '#D97706' }} />
+          <span>
+            <strong>Supabase Setup Required:</strong> Add your project URL and public anon key to <code>.env</code> to connect real Supabase Auth.
+          </span>
+        </div>
+      )}
+
+      {/* Email Verification Required Notice */}
+      {confirmationNotice && (
+        <div style={{
+          marginBottom: '16px',
+          padding: '14px',
+          borderRadius: '12px',
+          background: '#ECFDF5',
+          border: '1.5px solid #A7F3D0',
+          color: '#065F46',
+          fontSize: '0.88rem',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontWeight: 700 }}>
+            <CheckCircle2 size={18} color="#10B981" />
+            <span>Verification Email Sent</span>
+          </div>
+          <p style={{ margin: 0, fontSize: '0.84rem', color: '#047857' }}>
+            {confirmationNotice}
+          </p>
+          <button
+            type="button"
+            onClick={onSwitchToLogin}
+            className="btn btn-primary"
+            style={{ marginTop: '6px', padding: '8px 14px', fontSize: '0.82rem', alignSelf: 'flex-start' }}
+          >
+            Go to Login
+          </button>
+        </div>
+      )}
+
       {/* Global Auth Error Alert */}
       {authError && (
         <div style={{
@@ -155,7 +216,7 @@ export const SignUpForm: React.FC<SignUpFormProps> = ({ onSwitchToLogin }) => {
           alignItems: 'center',
           gap: '8px'
         }}>
-          <AlertCircle size={17} color="#DC2626" />
+          <AlertCircle size={17} color="#DC2626" style={{ flexShrink: 0 }} />
           <span>{authError}</span>
         </div>
       )}
@@ -182,7 +243,7 @@ export const SignUpForm: React.FC<SignUpFormProps> = ({ onSwitchToLogin }) => {
             </div>
             <input
               type="text"
-              placeholder="e.g. Khushi Dixit"
+              placeholder="e.g. Alex Johnson"
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
@@ -228,7 +289,7 @@ export const SignUpForm: React.FC<SignUpFormProps> = ({ onSwitchToLogin }) => {
             </div>
             <input
               type="email"
-              placeholder="e.g. khushi@example.com"
+              placeholder="name@example.com"
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value);
@@ -254,7 +315,7 @@ export const SignUpForm: React.FC<SignUpFormProps> = ({ onSwitchToLogin }) => {
           )}
         </div>
 
-        {/* Password & Confirm Password side by side */}
+        {/* Password & Confirm Password */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#1E293B', marginBottom: '5px' }}>
@@ -263,7 +324,7 @@ export const SignUpForm: React.FC<SignUpFormProps> = ({ onSwitchToLogin }) => {
             <div style={{ position: 'relative' }}>
               <input
                 type={showPassword ? 'text' : 'password'}
-                placeholder="Min. 8 chars"
+                placeholder="Min. 6 chars"
                 value={password}
                 onChange={(e) => {
                   setPassword(e.target.value);
@@ -336,7 +397,7 @@ export const SignUpForm: React.FC<SignUpFormProps> = ({ onSwitchToLogin }) => {
           </div>
         </div>
 
-        {/* Class / Grade & Learning Level */}
+        {/* Class & Learning Level */}
         <div style={{ display: 'grid', gridTemplateColumns: '120px 1fr', gap: '12px' }}>
           <div>
             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#1E293B', marginBottom: '5px' }}>

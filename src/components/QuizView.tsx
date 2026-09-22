@@ -17,6 +17,7 @@ import {
 import { useStudent } from '../context/StudentContext';
 import { QUIZ_QUESTIONS } from '../data/quizQuestions';
 import { SubjectType, QuizQuestion, QuizResult, DifficultyLevel } from '../types';
+import { getQuizQuestions, getChapters } from '../services/curriculumService';
 
 export const QuizView: React.FC = () => {
   const {
@@ -25,19 +26,41 @@ export const QuizView: React.FC = () => {
     setActiveSubject,
     recordQuizResult,
     lastQuizResult,
-    setActiveTab
+    setActiveTab,
+    currentLearningContext
   } = useStudent();
 
-  const [selectedTopic, setSelectedTopic] = useState<string>('Functional Groups');
+  const questionsToUse = getQuizQuestions(
+    student.grade,
+    student.board,
+    student.stream,
+    activeSubject,
+    currentLearningContext.chapter,
+    currentLearningContext.topic,
+    student.level
+  );
+
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [userAnswers, setUserAnswers] = useState<{ questionIndex: number; selectedIndex: number; isCorrect: boolean }[]>([]);
   const [isCompleted, setIsCompleted] = useState(false);
   const [quizStartTime] = useState(Date.now());
 
-  // Filter available questions for subject
-  const currentSubjectQuestions = QUIZ_QUESTIONS.filter((q) => q.subject === activeSubject);
-  const questionsToUse = currentSubjectQuestions.length >= 5 ? currentSubjectQuestions : QUIZ_QUESTIONS.slice(0, 10);
+  // Reset quiz states on subject, chapter, topic or academic profile change
+  React.useEffect(() => {
+    setCurrentQIndex(0);
+    setSelectedOption(null);
+    setUserAnswers([]);
+    setIsCompleted(false);
+  }, [
+    activeSubject,
+    currentLearningContext.chapter,
+    currentLearningContext.topic,
+    student.grade,
+    student.board,
+    student.stream
+  ]);
+
   const currentQ = questionsToUse[currentQIndex] || questionsToUse[0];
 
   const handleSelectOption = (index: number) => {
@@ -84,18 +107,20 @@ export const QuizView: React.FC = () => {
       adaptMsg = "Let's strengthen the basics before moving ahead.";
     }
 
+    const activeTopicTitle = currentLearningContext.topic || currentQ?.topic || activeSubject;
+
     const result: QuizResult = {
       score: correctCount,
       totalQuestions: total,
       accuracy,
       subject: activeSubject,
-      topic: currentQ.topic,
-      difficulty: currentQ.difficulty,
-      strongTopics: accuracy >= 60 ? [currentQ.topic] : [],
-      weakTopics: accuracy < 60 ? [currentQ.topic] : [],
+      topic: activeTopicTitle,
+      difficulty: currentQ?.difficulty || 'Intermediate',
+      strongTopics: accuracy >= 60 ? [activeTopicTitle] : [],
+      weakTopics: accuracy < 60 ? [activeTopicTitle] : [],
       adaptationMessage: adaptMsg,
       newDifficulty: newDiff,
-      recommendedTopic: accuracy < 60 ? `${currentQ.topic} Basics` : `Advanced ${currentQ.topic}`,
+      recommendedTopic: accuracy < 60 ? `${activeTopicTitle} Basics` : `Advanced ${activeTopicTitle}`,
       userAnswers: answers
     };
 
@@ -118,22 +143,23 @@ export const QuizView: React.FC = () => {
       { questionIndex: 9, selectedIndex: 1, isCorrect: false },
     ];
 
+    const activeTopicTitle = currentLearningContext.topic || `${activeSubject} Diagnostic`;
+
     const result: QuizResult = {
       score: 6,
       totalQuestions: 10,
       accuracy: 58,
-      subject: 'Mathematics',
-      topic: 'Geometry',
+      subject: activeSubject,
+      topic: activeTopicTitle,
       difficulty: 'Intermediate',
-      strongTopics: ['Algebra', 'Coordinate Calculations'],
-      weakTopics: ['Geometry', 'Triangles & Theorems'],
+      strongTopics: [`${activeTopicTitle} Foundations`],
+      weakTopics: [`${activeTopicTitle} Problem Sets`],
       adaptationMessage: "Let's strengthen the basics before moving ahead.",
       newDifficulty: 'Beginner',
-      recommendedTopic: 'Geometry Basics',
+      recommendedTopic: `${activeTopicTitle} Fundamentals`,
       userAnswers: simulatedAnswers
     };
 
-    setActiveSubject('Mathematics');
     recordQuizResult(result);
     setIsCompleted(true);
   };
@@ -144,6 +170,85 @@ export const QuizView: React.FC = () => {
     setUserAnswers([]);
     setIsCompleted(false);
   };
+
+  // STRICT NO FALLBACK RULE: If no questions match this specific topic, render clear notification
+  if (questionsToUse.length === 0) {
+    return (
+      <div style={{
+        maxWidth: '780px',
+        margin: '40px auto',
+        padding: '48px 32px',
+        textAlign: 'center',
+        background: '#FFFFFF',
+        borderRadius: '20px',
+        border: '1px solid var(--border-subtle)',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.04)',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: '20px'
+      }}>
+        <div style={{
+          width: '64px',
+          height: '64px',
+          borderRadius: '50%',
+          backgroundColor: '#EEF2FF',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: '#4F46E5'
+        }}>
+          <HelpCircle size={32} />
+        </div>
+        
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <span style={{
+            fontSize: '0.8rem',
+            fontWeight: 700,
+            color: '#6366F1',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em'
+          }}>
+            {activeSubject} • {currentLearningContext.chapter || 'Curriculum'}
+          </span>
+          <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#1E293B', margin: 0 }}>
+            {currentLearningContext.topic || activeSubject}
+          </h2>
+        </div>
+
+        <div style={{
+          padding: '16px 24px',
+          borderRadius: '12px',
+          backgroundColor: '#F8FAFC',
+          border: '1px solid #E2E8F0',
+          color: '#475569',
+          fontSize: '0.95rem',
+          lineHeight: '1.6',
+          maxWidth: '520px'
+        }}>
+          No quiz is currently available for this topic. Please try another topic.
+        </div>
+
+        <div style={{ display: 'flex', gap: '12px', marginTop: '12px', flexWrap: 'wrap', justifyContent: 'center' }}>
+          <button
+            onClick={() => setActiveTab('study')}
+            className="btn btn-primary"
+            style={{ padding: '10px 22px' }}
+          >
+            <BookOpen size={16} />
+            <span>Return to Lesson</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('subjects')}
+            className="btn btn-secondary"
+            style={{ padding: '10px 22px' }}
+          >
+            <span>Explore Subjects</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // RENDER POST-QUIZ RESULTS SCREEN (Panel 7 of screenshot)
   if (isCompleted && lastQuizResult) {
@@ -292,12 +397,12 @@ export const QuizView: React.FC = () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10B981' }} />
                     <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1E293B' }}>
-                      Covalent Bonding & Concepts
+                      {getChapters(student.grade, student.board, student.stream, subject)[0]?.topics[0]?.title || `${subject} Foundations`}
                     </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1E293B' }}>
-                      90%
+                      85%
                     </span>
                     <span className="badge badge-on-track">
                       On Track
@@ -317,12 +422,12 @@ export const QuizView: React.FC = () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#F59E0B' }} />
                     <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1E293B' }}>
-                      Chemical Reactions
+                      {getChapters(student.grade, student.board, student.stream, subject)[0]?.topics[1]?.title || `${subject} Application`}
                     </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1E293B' }}>
-                      60%
+                      65%
                     </span>
                     <span className="badge badge-practice">
                       Practice
@@ -423,10 +528,10 @@ export const QuizView: React.FC = () => {
       }}>
         <div>
           <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4F46E5', textTransform: 'uppercase' }}>
-            Diagnostic Quiz • {activeSubject}
+            Diagnostic Quiz • {activeSubject} {currentLearningContext.chapter ? `• ${currentLearningContext.chapter}` : ''}
           </span>
           <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#1E293B', margin: 0 }}>
-            Quiz: {currentQ.topic}
+            Quiz: {currentLearningContext.topic || currentQ.topic}
           </h1>
         </div>
 

@@ -7,45 +7,51 @@ import {
   Trash2,
   Copy,
   Check,
-  Volume2,
-  HelpCircle,
-  Code2,
-  BookOpen,
   Eye,
-  RefreshCw,
+  Paperclip,
+  X,
+  FileText,
+  AlertCircle,
   Lightbulb,
-  ChevronDown
+  CheckCircle2,
+  BookOpen,
+  Code2
 } from 'lucide-react';
 import { useStudent } from '../context/StudentContext';
 import { SubjectType, LearningStyle, TutorMessage } from '../types';
-import { generateIntelligentTutorResponse } from '../data/tutorKnowledge';
+import { generateTutorAnswer } from '../services/aiTutorService';
 
 export const AITutor: React.FC = () => {
-  const { student, activeSubject, setActiveSubject, setPreferredStyle } = useStudent();
+  const {
+    student,
+    activeSubject,
+    setActiveSubject,
+    setPreferredStyle,
+    uploadedMaterial,
+    uploadState,
+    removeUploadedMaterial,
+    processAndSetFile,
+    subjects,
+    currentLearningContext
+  } = useStudent();
+
   const [messages, setMessages] = useState<TutorMessage[]>([
     {
       id: 'welcome-msg',
       sender: 'tutor',
-      text: "Sure! Functional groups are specific groups of atoms in organic compounds that determine how the compound behaves in chemical reactions. Think of them as 'identity tags' — just like a group of people has a common identity (e.g., students, teachers), functional groups give specific properties to organic compounds.",
+      text: `Hello! I am your AI Adaptive Companion GuruMitra. Select any subject above, choose your preferred learning style, or ask me anything from your ${student.grade || 'Class 9'} (${student.board || 'CBSE'}) syllabus!`,
       timestamp: 'Just now',
-      subject: 'Science',
-      styleUsed: 'Simple',
+      subject: activeSubject,
+      styleUsed: student.preferredStyle,
       structuredResponse: {
-        directAnswer: 'Functional groups are specific atoms or bonds within molecules that are responsible for the characteristic chemical reactions of those molecules.',
-        simpleExplanation: 'No matter how long the carbon chain is, the functional group dictates whether it behaves as an alcohol, an acid, or an aldehyde.',
-        stepByStep: [
-          'Step 1: Alcohol (-OH) gives alcohol properties (e.g. Ethanol)',
-          'Step 2: Carboxylic Acid (-COOH) gives acidic properties (e.g. Acetic acid in vinegar)',
-          'Step 3: Aldehyde (-CHO) and Ketone (>C=O) contain reactive carbonyl groups'
-        ],
-        analogy: "Think of functional groups as 'special tools' in a Swiss Army knife! Swapping the tool completely changes what the knife can do.",
-        keyConcept: 'All members of a homologous series share identical functional groups.',
-        formulaOrCode: 'Alcohol: -OH | Carboxylic Acid: -COOH | Aldehyde: -CHO | Ketone: -CO-',
-        visualDiagram: '   [ Carbon Backbone ] ──► [ -OH ] = Alcohol (e.g., C₂H₅OH)\n   [ Carbon Backbone ] ──► [ -COOH ] = Organic Acid (e.g., CH₃COOH)',
+        responseType: 'conceptual',
+        directAnswer: `Welcome to your personal AI Tutor for ${activeSubject}!`,
+        simpleExplanation: `I'm calibrated for your active curriculum (${student.grade || 'Class 9'} • ${student.board || 'CBSE'}${student.stream && student.stream !== 'Not applicable' ? ' • ' + student.stream : ''} • ${student.level || 'Beginner'}). Whether you need step-by-step math calculations, science mechanisms, or commerce fundamentals, I will adapt my explanations to match your preferred style.`,
+        keyConcept: 'Adaptive Learning: Choose between Simple, Analogy, Visual, or Exam-oriented modes anytime above.',
+        example: 'Try asking: "Solve 2x + 5 = 15", "Explain photosynthesis", "What are functional groups in chemistry?", "Explain kinematics equations", or "What is the accounting equation?".',
         practiceQuestion: {
-          question: 'Which functional group is found in alcohols?',
-          options: ['-COOH', '-OH', '-CHO', '-NH2'],
-          answer: '-OH (Hydroxyl group)'
+          question: 'Ready to learn? Which topic would you like to explore first?',
+          answer: 'You can also attach a PDF or notes file to get instant tutoring on your own study material!'
         }
       }
     }
@@ -55,78 +61,199 @@ export const AITutor: React.FC = () => {
   const [isTyping, setIsTyping] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showPracticeAnswer, setShowPracticeAnswer] = useState<Record<string, boolean>>({});
+  const [emptyQueryAlert, setEmptyQueryAlert] = useState(false);
   const chatBottomRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const subjectsList: { name: SubjectType; icon: string; color: string }[] = [
-    { name: 'Mathematics', icon: '📐', color: '#4F46E5' },
-    { name: 'Science', icon: '🔬', color: '#059669' },
-    { name: 'Computer Science', icon: '💻', color: '#7C3AED' },
-    { name: 'English', icon: '📖', color: '#D97706' },
-    { name: 'Social Science', icon: '🌍', color: '#DC2626' }
-  ];
+  const getSubjectIconAndColor = (name: string) => {
+    const map: Record<string, { icon: string; color: string }> = {
+      Mathematics: { icon: '📐', color: '#4F46E5' },
+      Ganit: { icon: '📐', color: '#4F46E5' },
+      Science: { icon: '🔬', color: '#059669' },
+      Vigyan: { icon: '🔬', color: '#059669' },
+      Physics: { icon: '⚡', color: '#2563EB' },
+      Chemistry: { icon: '🧪', color: '#7C3AED' },
+      Biology: { icon: '🧬', color: '#059669' },
+      'Computer Science': { icon: '💻', color: '#6366F1' },
+      English: { icon: '📖', color: '#D97706' },
+      'Social Science': { icon: '🌍', color: '#DC2626' },
+      'Samajik Vigyan': { icon: '🌍', color: '#DC2626' },
+      Hindi: { icon: '📝', color: '#EA580C' },
+      Accountancy: { icon: '📊', color: '#0D9488' },
+      'Business Studies': { icon: '💼', color: '#475569' },
+      Economics: { icon: '📈', color: '#B45309' },
+      History: { icon: '🏛️', color: '#9333EA' },
+      'Political Science': { icon: '⚖️', color: '#1D4ED8' },
+      Geography: { icon: '🗺️', color: '#15803D' }
+    };
+    return map[name] || { icon: '📚', color: '#4F46E5' };
+  };
 
-  const suggestedQuestions: Record<SubjectType, string[]> = {
+  const subjectsList = subjects.map((s) => {
+    const styling = getSubjectIconAndColor(s.name);
+    return { name: s.name, icon: styling.icon, color: styling.color };
+  });
+
+  const defaultSubjectQuestions: Record<string, string[]> = {
     Mathematics: [
-      'Explain quadratic equations in simple words',
-      'What is the Pythagorean theorem?',
-      'How does the discriminant work in quadratic roots?',
-      'Give me an example problem'
+      'Solve 2x + 5 = 15',
+      'Explain quadratic equations',
+      'What is Pythagoras theorem?',
+      'Explain probability'
+    ],
+    Ganit: [
+      'रैखिक समीकरण 2x + 5 = 15 हल करें',
+      'द्विघात समीकरण क्या है?',
+      'पाइथागोरस प्रमेय समझाइए'
     ],
     Science: [
-      'Why does photosynthesis occur?',
-      'Explain functional groups in simple words',
-      'What is covalent bonding?',
-      'Give me a practice question on chemical reactions'
+      'Explain photosynthesis',
+      'What is Newton\'s second law?',
+      'Explain the human digestive system',
+      'What is an atom?'
+    ],
+    Vigyan: [
+      'प्रकाश का परावर्तन क्या है?',
+      'न्यूटन के गति के नियम समझाइए',
+      'प्रकाश संश्लेषण की क्रिया'
+    ],
+    Physics: [
+      'What are the kinematic equations of motion?',
+      'Explain Ohm\'s law with circuit examples',
+      'What is Snell\'s law of refraction?',
+      'Explain Newton\'s second law of motion'
+    ],
+    Chemistry: [
+      'What are functional groups in organic chemistry?',
+      'Explain types of chemical reactions',
+      'What is the difference between an acid and a base?',
+      'How does covalent bonding work?'
+    ],
+    Biology: [
+      'Explain the process of photosynthesis',
+      'How does the human digestive system work?',
+      'What are Mendel\'s laws of inheritance?',
+      'Explain the difference between plant and animal cells'
     ],
     'Computer Science': [
       'What is a binary tree?',
-      'Explain recursion using a real-world analogy',
-      'What is the time complexity of binary search?',
-      'Give me a Python code example'
+      'Explain recursion',
+      'What is an array?',
+      'Give me a Python example of a loop',
+      'What is time complexity?'
     ],
     English: [
-      'Explain active and passive voice',
-      'What is the difference between a simile and a metaphor?',
-      'Convert: "Khushi has completed the project"',
-      'Explain subject-verb agreement rules'
+      'Explain nouns and pronouns',
+      'Correct this sentence',
+      'What is a metaphor?',
+      'Explain active and passive voice'
     ],
     'Social Science': [
+      'Explain the Indian Constitution',
+      'What is democracy?',
       'Explain the causes of the French Revolution',
-      'What are the key features of federalism?',
-      'Why is democracy considered the best form of government?',
-      'Explain the separation of powers'
+      'What is the role of the Parliament?'
+    ],
+    'Samajik Vigyan': [
+      'भारतीय संविधान की प्रस्तावना',
+      'लोकतंत्र की मुख्य विशेषताएं',
+      'फ्रांसीसी क्रांति के कारण'
+    ],
+    Accountancy: [
+      'Explain the accounting equation Assets = Liabilities + Capital',
+      'What are the golden rules of accounting?',
+      'How to prepare a balance sheet?'
+    ],
+    'Business Studies': [
+      'What are Fayol\'s principles of management?',
+      'Explain the 4 Ps of the marketing mix',
+      'What is the importance of planning in business?'
+    ],
+    Economics: [
+      'Explain the Law of Demand and demand curves',
+      'What is Gross Domestic Product (GDP)?',
+      'What causes inflation and how is it controlled?'
     ]
   };
 
+  const [activeSuggestions, setActiveSuggestions] = useState<string[]>(
+    defaultSubjectQuestions[activeSubject] || [
+      'Explain the core concepts of this subject',
+      'Give me an exam-style practice question',
+      'What are the most important formulas/definitions?'
+    ]
+  );
+
   const stylePills: LearningStyle[] = ['Simple', 'Analogy', 'Visual', 'Exam-oriented'];
+
+  // When active subject changes, update initial suggestions if user hasn't asked follow-up
+  useEffect(() => {
+    if (uploadedMaterial) {
+      setActiveSuggestions([
+        'Summarize this document',
+        'What are the key points in this material?',
+        'Give me 3 practice quiz questions from this file',
+        'Explain the difficult concepts in simple words'
+      ]);
+    } else {
+      setActiveSuggestions(
+        defaultSubjectQuestions[activeSubject] || [
+          `Explain core concepts in ${activeSubject}`,
+          `Key exam questions for ${activeSubject}`,
+          `Formula sheet for ${activeSubject}`
+        ]
+      );
+    }
+  }, [activeSubject, uploadedMaterial]);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, isTyping]);
 
-  const handleSendMessage = (textToSend?: string) => {
-    const query = textToSend || inputQuery;
-    if (!query.trim()) return;
+  const handleSendMessage = async (textToSend?: string) => {
+    const query = (textToSend || inputQuery).trim();
+    if (!query) {
+      setEmptyQueryAlert(true);
+      setTimeout(() => setEmptyQueryAlert(false), 3000);
+      return;
+    }
+
+    setEmptyQueryAlert(false);
 
     const userMessage: TutorMessage = {
       id: `user-${Date.now()}`,
       sender: 'student',
       text: query,
       timestamp: 'Just now',
-      subject: activeSubject
+      subject: activeSubject,
+      attachedFile: uploadedMaterial?.fileName
     };
 
     setMessages((prev) => [...prev, userMessage]);
     setInputQuery('');
     setIsTyping(true);
 
-    // Simulate realistic AI generation with intelligent context
-    setTimeout(() => {
-      const responseStructure = generateIntelligentTutorResponse(
-        query,
-        activeSubject,
-        student.preferredStyle
-      );
+    try {
+      // Call scalable AI Tutor Service with rich educational reasoning
+      const responseStructure = await generateTutorAnswer({
+        question: query,
+        subject: activeSubject,
+        learningStyle: student.preferredStyle,
+        gradeLevel: student.grade || 'Class 9',
+        board: student.board,
+        stream: student.stream,
+        difficulty: student.level || 'Beginner',
+        chapter: currentLearningContext.chapter,
+        topic: currentLearningContext.topic,
+        uploadedContext: uploadedMaterial
+          ? {
+              fileName: uploadedMaterial.fileName,
+              fileType: uploadedMaterial.fileType,
+              extractedText: uploadedMaterial.extractedText
+            }
+          : null,
+        conversationHistory: messages
+      });
 
       const botMessage: TutorMessage = {
         id: `tutor-${Date.now()}`,
@@ -139,8 +266,41 @@ export const AITutor: React.FC = () => {
       };
 
       setMessages((prev) => [...prev, botMessage]);
+
+      // Update follow-up suggested questions dynamically based on answer!
+      if (responseStructure.followUpQuestions && responseStructure.followUpQuestions.length > 0) {
+        setActiveSuggestions(responseStructure.followUpQuestions);
+      }
+    } catch (err) {
+      const errorMsg: TutorMessage = {
+        id: `tutor-err-${Date.now()}`,
+        sender: 'tutor',
+        text: "I couldn't generate the answer right now. Please try again.",
+        timestamp: 'Just now',
+        subject: activeSubject,
+        styleUsed: student.preferredStyle,
+        structuredResponse: {
+          directAnswer: "I couldn't generate the answer right now. Please try again.",
+          simpleExplanation: "An unexpected error occurred while analyzing your query. Please rephrase your question or select one of the suggested topics below.",
+          keyConcept: 'System Resiliency: Check your query formatting and network connection.'
+        }
+      };
+      setMessages((prev) => [...prev, errorMsg]);
+    } finally {
       setIsTyping(false);
-    }, 900);
+    }
+  };
+
+  const handleQuickFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      try {
+        await processAndSetFile(files[0]);
+      } catch {
+        // Error notification handled in context
+      }
+    }
+    if (e.target) e.target.value = '';
   };
 
   const handleCopy = (id: string, text: string) => {
@@ -163,6 +323,15 @@ export const AITutor: React.FC = () => {
       gap: '20px',
       height: 'calc(100vh - 74px)'
     }}>
+      {/* Hidden file input for quick attachments */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleQuickFileUpload}
+        accept=".pdf,.doc,.docx,.txt,.text,.md,.csv,.json"
+        style={{ display: 'none' }}
+      />
+
       {/* Top Controls: Header, Subject Selector & Learning Style Modifier */}
       <div className="card" style={{ padding: '18px 24px', flexShrink: 0 }}>
         <div style={{
@@ -194,7 +363,7 @@ export const AITutor: React.FC = () => {
               </span>
             </div>
             <p style={{ fontSize: '0.8rem', color: '#64748B', margin: '4px 0 0 40px' }}>
-              Ask anything, anytime. Switches domain and pedagogical style dynamically.
+              Ask anything, anytime. Switches domain, question type, and pedagogical style dynamically.
             </p>
           </div>
 
@@ -239,9 +408,11 @@ export const AITutor: React.FC = () => {
           justifyContent: 'space-between',
           marginTop: '14px',
           paddingTop: '12px',
-          borderTop: '1px solid #F1F5F9'
+          borderTop: '1px solid #F1F5F9',
+          flexWrap: 'wrap',
+          gap: '10px'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
             <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#4F46E5', letterSpacing: '0.03em' }}>
               ADAPTIVE EXPLANATION STYLE:
             </span>
@@ -263,15 +434,20 @@ export const AITutor: React.FC = () => {
             </div>
           </div>
 
-          <button
-            onClick={handleClearChat}
-            className="btn btn-ghost"
-            style={{ padding: '4px 8px', fontSize: '0.75rem', color: '#94A3B8' }}
-            title="Clear Chat History"
-          >
-            <Trash2 size={14} />
-            <span>Clear</span>
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
+              Class {student.grade || '9th'} • {student.level || 'Beginner'}
+            </span>
+            <button
+              onClick={handleClearChat}
+              className="btn btn-ghost"
+              style={{ padding: '4px 8px', fontSize: '0.75rem', color: '#94A3B8' }}
+              title="Clear Chat History"
+            >
+              <Trash2 size={14} />
+              <span>Clear</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -296,13 +472,13 @@ export const AITutor: React.FC = () => {
             <div style={{
               margin: 'auto',
               textAlign: 'center',
-              maxWidth: '400px',
+              maxWidth: '420px',
               color: '#94A3B8'
             }}>
               <Bot size={48} color="#C7D2FE" style={{ marginBottom: '12px' }} />
               <h4 style={{ color: '#1E293B', marginBottom: '6px' }}>How can I help you today?</h4>
               <p style={{ fontSize: '0.85rem' }}>
-                Select a subject, pick a question below, or type your query to receive an intelligent, structured breakdown.
+                Ask any question in {activeSubject}, attach your study material, or pick a suggested topic below to get started.
               </p>
             </div>
           ) : (
@@ -379,10 +555,102 @@ export const AITutor: React.FC = () => {
                     lineHeight: '1.5'
                   }}>
                     {isUser ? (
-                      <div>{msg.text}</div>
+                      <div>
+                        {msg.attachedFile && (
+                          <div style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            backgroundColor: 'rgba(255,255,255,0.2)',
+                            padding: '2px 8px',
+                            borderRadius: '6px',
+                            fontSize: '0.72rem',
+                            marginBottom: '6px'
+                          }}>
+                            <FileText size={11} />
+                            <span>{msg.attachedFile}</span>
+                          </div>
+                        )}
+                        <div>{msg.text}</div>
+                      </div>
                     ) : (
                       /* Rich Structured Response */
                       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                        {/* Cross-Subject Graceful Notice if query or material was from another domain */}
+                        {msg.structuredResponse?.crossSubjectNotice && (
+                          <div style={{
+                            padding: '10px 14px',
+                            backgroundColor: '#FEF3C7',
+                            borderRadius: '10px',
+                            border: '1px solid #FDE68A',
+                            color: '#92400E',
+                            fontSize: '0.84rem',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '12px',
+                            flexWrap: 'wrap'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <Lightbulb size={16} color="#D97706" />
+                              <span>{msg.structuredResponse.crossSubjectNotice}</span>
+                            </div>
+                            {(() => {
+                              const notice = msg.structuredResponse.crossSubjectNotice || '';
+                              const targetSub = subjects.find((s) => notice.includes(s.name));
+                              if (targetSub && targetSub.name !== activeSubject) {
+                                return (
+                                  <button
+                                    onClick={() => setActiveSubject(targetSub.name)}
+                                    style={{
+                                      padding: '4px 10px',
+                                      fontSize: '0.78rem',
+                                      backgroundColor: '#7C3AED',
+                                      color: '#FFFFFF',
+                                      border: 'none',
+                                      borderRadius: '6px',
+                                      cursor: 'pointer',
+                                      fontWeight: 700,
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '4px'
+                                    }}
+                                  >
+                                    <span>Switch to {targetSub.name}</span>
+                                    <span>→</span>
+                                  </button>
+                                );
+                              }
+                              return null;
+                            })()}
+                          </div>
+                        )}
+
+                        {/* Document Relevant Content Found (for Document Q&A) */}
+                        {msg.structuredResponse?.relevantContentFound && (
+                          <div style={{
+                            padding: '12px 16px',
+                            backgroundColor: '#F0FDF4',
+                            borderLeft: '4px solid #10B981',
+                            borderRadius: '10px',
+                            fontSize: '0.86rem',
+                            color: '#166534',
+                            lineHeight: '1.4'
+                          }}>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 800, textTransform: 'uppercase', marginBottom: '4px' }}>
+                              Relevant Content Extracted From Your Document:
+                            </div>
+                            <blockquote style={{ margin: 0, fontStyle: 'italic' }}>
+                              "{msg.structuredResponse.relevantContentFound}"
+                            </blockquote>
+                            {msg.structuredResponse.documentReference && (
+                              <div style={{ fontSize: '0.72rem', color: '#059669', marginTop: '6px', fontWeight: 600 }}>
+                                📄 {msg.structuredResponse.documentReference}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
                         {/* Direct Answer */}
                         <div style={{
                           padding: '12px 16px',
@@ -396,11 +664,11 @@ export const AITutor: React.FC = () => {
                           💡 {msg.structuredResponse?.directAnswer || msg.text}
                         </div>
 
-                        {/* Simple Explanation */}
+                        {/* Core / Simple Explanation */}
                         {msg.structuredResponse?.simpleExplanation && (
                           <div>
                             <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: '4px' }}>
-                              Core Explanation
+                              {msg.structuredResponse.responseType === 'mathematical' ? 'Mathematical Concept' : 'Explanation'}
                             </div>
                             <p style={{ margin: 0, color: '#334155' }}>
                               {msg.structuredResponse.simpleExplanation}
@@ -408,11 +676,26 @@ export const AITutor: React.FC = () => {
                           </div>
                         )}
 
-                        {/* Step-by-Step Breakdown */}
+                        {/* Example (for Conceptual Questions) */}
+                        {msg.structuredResponse?.example && (
+                          <div style={{
+                            padding: '10px 14px',
+                            backgroundColor: '#F8FAFC',
+                            borderRadius: '10px',
+                            border: '1px solid #E2E8F0',
+                            fontSize: '0.86rem',
+                            color: '#334155'
+                          }}>
+                            <strong style={{ color: '#4F46E5' }}>Example: </strong>
+                            {msg.structuredResponse.example}
+                          </div>
+                        )}
+
+                        {/* Step-by-Step Breakdown (or Math Calculation) */}
                         {msg.structuredResponse?.stepByStep && (
                           <div>
                             <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: '6px' }}>
-                              Step-by-Step Breakdown
+                              {msg.structuredResponse.responseType === 'mathematical' ? 'Step-by-Step Calculation' : 'Step-by-Step Breakdown'}
                             </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                               {msg.structuredResponse.stepByStep.map((step, idx) => (
@@ -448,34 +731,95 @@ export const AITutor: React.FC = () => {
 
                         {/* Formula or Code block */}
                         {msg.structuredResponse?.formulaOrCode && (
+                          <div>
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase' }}>
+                                {msg.structuredResponse.responseType === 'programming' ? 'Python / Code Implementation' : 'Formula & Key Expressions'}
+                              </span>
+                              <button
+                                onClick={() => handleCopy(`code-${msg.id}`, msg.structuredResponse?.formulaOrCode || '')}
+                                style={{
+                                  border: 'none',
+                                  background: 'transparent',
+                                  color: '#94A3B8',
+                                  fontSize: '0.72rem',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                              >
+                                {copiedId === `code-${msg.id}` ? <Check size={12} color="#10B981" /> : <Copy size={12} />}
+                                <span>{copiedId === `code-${msg.id}` ? 'Copied' : 'Copy Code'}</span>
+                              </button>
+                            </div>
+                            <div style={{
+                              backgroundColor: '#0F172A',
+                              color: '#F8FAFC',
+                              padding: '12px 16px',
+                              borderRadius: '12px',
+                              fontFamily: 'monospace',
+                              fontSize: '0.82rem',
+                              whiteSpace: 'pre-wrap',
+                              overflowX: 'auto',
+                              border: '1px solid #1E293B'
+                            }}>
+                              {msg.structuredResponse.formulaOrCode}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Code Explanation (for Programming) */}
+                        {msg.structuredResponse?.codeExplanation && (
+                          <div style={{ fontSize: '0.86rem', color: '#334155' }}>
+                            <strong style={{ color: '#4F46E5' }}>Code Walkthrough: </strong>
+                            {msg.structuredResponse.codeExplanation}
+                          </div>
+                        )}
+
+                        {/* Complexity Box (for Programming) */}
+                        {msg.structuredResponse?.complexity && (
                           <div style={{
-                            backgroundColor: '#0F172A',
-                            color: '#F8FAFC',
-                            padding: '12px 16px',
-                            borderRadius: '12px',
-                            fontFamily: 'monospace',
+                            padding: '10px 14px',
+                            backgroundColor: '#F1F5F9',
+                            borderRadius: '10px',
+                            border: '1px solid #CBD5E1',
                             fontSize: '0.82rem',
-                            whiteSpace: 'pre-wrap',
-                            overflowX: 'auto'
+                            color: '#1E293B',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '4px'
                           }}>
-                            {msg.structuredResponse.formulaOrCode}
+                            <div>
+                              <strong style={{ color: '#4F46E5' }}>⏱️ Time Complexity: </strong>
+                              {msg.structuredResponse.complexity.time}
+                            </div>
+                            <div>
+                              <strong style={{ color: '#059669' }}>💾 Space Complexity: </strong>
+                              {msg.structuredResponse.complexity.space}
+                            </div>
                           </div>
                         )}
 
                         {/* Visual Diagram */}
                         {msg.structuredResponse?.visualDiagram && (
-                          <div style={{
-                            backgroundColor: '#F1F5F9',
-                            color: '#1E293B',
-                            padding: '12px 16px',
-                            borderRadius: '12px',
-                            fontFamily: 'monospace',
-                            fontSize: '0.8rem',
-                            whiteSpace: 'pre-wrap',
-                            overflowX: 'auto',
-                            border: '1px solid #CBD5E1'
-                          }}>
-                            {msg.structuredResponse.visualDiagram}
+                          <div>
+                            <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', marginBottom: '4px' }}>
+                              Structured Visual Representation
+                            </div>
+                            <div style={{
+                              backgroundColor: '#F8FAFC',
+                              color: '#1E293B',
+                              padding: '12px 16px',
+                              borderRadius: '12px',
+                              fontFamily: 'monospace',
+                              fontSize: '0.8rem',
+                              whiteSpace: 'pre-wrap',
+                              overflowX: 'auto',
+                              border: '1px solid #CBD5E1'
+                            }}>
+                              {msg.structuredResponse.visualDiagram}
+                            </div>
                           </div>
                         )}
 
@@ -503,7 +847,7 @@ export const AITutor: React.FC = () => {
                             backgroundColor: '#F8FAFF'
                           }}>
                             <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#4F46E5', textTransform: 'uppercase', marginBottom: '6px' }}>
-                              Interactive Practice Question
+                              Quick Check Practice Question
                             </div>
                             <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1E293B', marginBottom: '8px' }}>
                               {msg.structuredResponse.practiceQuestion.question}
@@ -534,7 +878,7 @@ export const AITutor: React.FC = () => {
                               style={{ padding: '4px 10px', fontSize: '0.75rem', borderRadius: '8px' }}
                             >
                               <Eye size={12} />
-                              <span>{showPracticeAnswer[msg.id] ? 'Hide Answer' : 'Reveal Solution'}</span>
+                              <span>{showPracticeAnswer[msg.id] ? 'Hide Solution' : 'Reveal Solution'}</span>
                             </button>
 
                             {showPracticeAnswer[msg.id] && (
@@ -553,7 +897,7 @@ export const AITutor: React.FC = () => {
                           </div>
                         )}
 
-                        {/* Action buttons (Copy, Read) */}
+                        {/* Action buttons (Copy) */}
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '4px' }}>
                           <button
                             onClick={() => handleCopy(msg.id, msg.structuredResponse?.directAnswer || msg.text)}
@@ -569,7 +913,7 @@ export const AITutor: React.FC = () => {
                             }}
                           >
                             {copiedId === msg.id ? <Check size={13} color="#10B981" /> : <Copy size={13} />}
-                            <span>{copiedId === msg.id ? 'Copied' : 'Copy'}</span>
+                            <span>{copiedId === msg.id ? 'Copied' : 'Copy Answer'}</span>
                           </button>
                         </div>
                       </div>
@@ -580,7 +924,7 @@ export const AITutor: React.FC = () => {
             })
           )}
 
-          {/* Live Typing Animation */}
+          {/* Live Thinking / Synthesis Animation */}
           {isTyping && (
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <div style={{
@@ -602,13 +946,13 @@ export const AITutor: React.FC = () => {
                 border: '1px solid #E2E8F0',
                 display: 'flex',
                 alignItems: 'center',
-                gap: '5px'
+                gap: '6px'
               }}>
                 <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#4F46E5', animation: 'pulse-soft 1s infinite' }} />
                 <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#4F46E5', animation: 'pulse-soft 1s infinite 0.2s' }} />
                 <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: '#4F46E5', animation: 'pulse-soft 1s infinite 0.4s' }} />
-                <span style={{ fontSize: '0.75rem', color: '#64748B', marginLeft: '6px' }}>
-                  GuruMitra is synthesizing with {student.preferredStyle} pedagogical style...
+                <span style={{ fontSize: '0.78rem', color: '#64748B', marginLeft: '6px', fontWeight: 600 }}>
+                  GuruMitra is thinking with {student.preferredStyle} learning style...
                 </span>
               </div>
             </div>
@@ -616,7 +960,7 @@ export const AITutor: React.FC = () => {
           <div ref={chatBottomRef} />
         </div>
 
-        {/* Suggested Prompt Chips */}
+        {/* Dynamic Suggested Follow-up Questions */}
         <div style={{
           padding: '8px 20px',
           backgroundColor: '#F8FAFC',
@@ -630,7 +974,7 @@ export const AITutor: React.FC = () => {
           <span style={{ fontSize: '0.72rem', fontWeight: 700, color: '#94A3B8' }}>
             SUGGESTED ({activeSubject}):
           </span>
-          {suggestedQuestions[activeSubject]?.map((q, idx) => (
+          {activeSuggestions.map((q, idx) => (
             <button
               key={idx}
               onClick={() => handleSendMessage(q)}
@@ -638,11 +982,12 @@ export const AITutor: React.FC = () => {
                 background: '#FFFFFF',
                 border: '1px solid #E2E8F0',
                 borderRadius: '999px',
-                padding: '4px 12px',
-                fontSize: '0.75rem',
+                padding: '5px 13px',
+                fontSize: '0.76rem',
                 color: '#475569',
                 cursor: 'pointer',
-                transition: 'all 0.15s ease'
+                transition: 'all 0.15s ease',
+                flexShrink: 0
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.borderColor = '#4F46E5';
@@ -658,21 +1003,113 @@ export const AITutor: React.FC = () => {
           ))}
         </div>
 
-        {/* Input Field & Send Button */}
+        {/* Uploaded Material Chip above input (Requirement 9) */}
+        {uploadedMaterial && (
+          <div style={{
+            padding: '8px 20px 0',
+            backgroundColor: '#FFFFFF',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px'
+          }}>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '8px',
+              backgroundColor: '#EEF2FF',
+              border: '1px solid #C7D2FE',
+              borderRadius: '999px',
+              padding: '4px 12px',
+              fontSize: '0.78rem',
+              color: '#4338CA',
+              fontWeight: 600
+            }}>
+              <span>📄 {uploadedMaterial.fileName}</span>
+              <span style={{ fontSize: '0.68rem', color: '#059669', fontWeight: 800 }}>• Ready</span>
+              <button
+                onClick={removeUploadedMaterial}
+                title="Remove file from current chat context"
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: '#6366F1',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  padding: '2px',
+                  borderRadius: '50%'
+                }}
+              >
+                <X size={13} />
+              </button>
+            </div>
+            <span style={{ fontSize: '0.72rem', color: '#94A3B8' }}>
+              (AI Tutor will use this material as context)
+            </span>
+          </div>
+        )}
+
+        {/* Empty Question Alert */}
+        {emptyQueryAlert && (
+          <div style={{
+            margin: '8px 20px 0',
+            padding: '6px 12px',
+            backgroundColor: '#FEF2F2',
+            border: '1px solid #FECACA',
+            borderRadius: '8px',
+            color: '#991B1B',
+            fontSize: '0.78rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px'
+          }}>
+            <AlertCircle size={14} color="#EF4444" />
+            <span>Please enter a question first.</span>
+          </div>
+        )}
+
+        {/* Input Field, Quick Attach & Send Button */}
         <div style={{
           padding: '16px 20px',
           backgroundColor: '#FFFFFF',
-          borderTop: '1px solid var(--border-subtle)',
+          borderTop: uploadedMaterial ? 'none' : '1px solid var(--border-subtle)',
           display: 'flex',
           alignItems: 'center',
-          gap: '12px'
+          gap: '10px'
         }}>
+          {/* Quick File Attach Button */}
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            title="Attach study material (PDF, DOCX, TXT)"
+            className="btn btn-outline"
+            style={{
+              padding: '12px 14px',
+              borderRadius: '12px',
+              borderColor: uploadedMaterial ? '#A5B4FC' : 'var(--border-subtle)',
+              color: uploadedMaterial ? '#4F46E5' : '#64748B'
+            }}
+          >
+            <Paperclip size={18} />
+          </button>
+
           <input
             type="text"
             value={inputQuery}
-            onChange={(e) => setInputQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-            placeholder={`Ask any ${activeSubject} question (e.g. "Explain in simple words", "Give an example")...`}
+            onChange={(e) => {
+              setInputQuery(e.target.value);
+              if (emptyQueryAlert) setEmptyQueryAlert(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSendMessage();
+              }
+            }}
+            placeholder={
+              uploadedMaterial
+                ? `Ask anything about "${uploadedMaterial.fileName}" (e.g. "Summarize this", "What does it say about...")`
+                : `Ask any ${activeSubject} question (e.g. "Solve 2x + 5 = 15", "Explain in simple words")...`
+            }
             style={{
               flex: 1,
               padding: '12px 18px',
@@ -691,7 +1128,7 @@ export const AITutor: React.FC = () => {
             onClick={() => handleSendMessage()}
             className="btn btn-primary"
             style={{ padding: '12px 20px', borderRadius: '12px' }}
-            disabled={!inputQuery.trim()}
+            disabled={isTyping}
           >
             <Send size={17} />
             <span>Send</span>

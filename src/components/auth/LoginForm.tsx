@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Loader2, Sparkles, CheckCircle2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, AlertCircle, ArrowRight, Loader2, Info } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 interface LoginFormProps {
@@ -11,7 +11,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   onSwitchToSignUp,
   onSwitchToForgotPassword
 }) => {
-  const { login, authError, clearError, demoCredentials } = useAuth();
+  const { signIn, authError, clearError, isConfigured } = useAuth();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -19,7 +19,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
   const [rememberMe, setRememberMe] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Local client validation errors
+  // Client validation errors
   const [errors, setErrors] = useState<{ email?: string; password?: string }>({});
 
   const validate = (): boolean => {
@@ -33,8 +33,8 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
     if (!password) {
       newErrors.password = 'Please enter your password.';
-    } else if (password.length < 8) {
-      newErrors.password = 'Password must contain at least 8 characters.';
+    } else if (password.length < 6) {
+      newErrors.password = 'Password must contain at least 6 characters.';
     }
 
     setErrors(newErrors);
@@ -51,7 +51,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
 
     setIsSubmitting(true);
     try {
-      await login({
+      await signIn({
         email,
         password,
         rememberMe
@@ -59,13 +59,6 @@ export const LoginForm: React.FC<LoginFormProps> = ({
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleFillDemo = () => {
-    setEmail(demoCredentials.email);
-    setPassword(demoCredentials.password);
-    setErrors({});
-    clearError();
   };
 
   return (
@@ -86,56 +79,28 @@ export const LoginForm: React.FC<LoginFormProps> = ({
         </p>
       </div>
 
-      {/* Quick Judge Demo Helper Banner */}
-      <div style={{
-        marginBottom: '20px',
-        padding: '12px 14px',
-        borderRadius: '12px',
-        background: 'linear-gradient(135deg, #FEF3C7 0%, #FFFBEB 100%)',
-        border: '1.5px solid #FDE68A',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'space-between',
-        gap: '12px'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{ fontSize: '1.1rem' }}>🎓</span>
-          <div style={{ textAlign: 'left' }}>
-            <div style={{ fontSize: '0.78rem', fontWeight: 700, color: '#92400E' }}>
-              Hackathon Judge Demo Account
-            </div>
-            <div style={{ fontSize: '0.72rem', color: '#B45309', fontFamily: 'monospace' }}>
-              {demoCredentials.email} • {demoCredentials.password}
-            </div>
-          </div>
+      {/* Supabase Configuration Banner (if credentials are still default placeholders) */}
+      {!isConfigured && (
+        <div style={{
+          marginBottom: '18px',
+          padding: '12px 14px',
+          borderRadius: '12px',
+          background: '#FFFBEB',
+          border: '1px solid #FCD34D',
+          color: '#92400E',
+          fontSize: '0.82rem',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '8px'
+        }}>
+          <Info size={16} style={{ flexShrink: 0, marginTop: '2px', color: '#D97706' }} />
+          <span>
+            <strong>Supabase Setup Required:</strong> Add your project URL and public anon key to <code>.env</code> to connect real Supabase Auth.
+          </span>
         </div>
-        <button
-          type="button"
-          onClick={handleFillDemo}
-          style={{
-            border: 'none',
-            background: '#F59E0B',
-            color: '#FFFFFF',
-            padding: '6px 12px',
-            borderRadius: '8px',
-            fontSize: '0.75rem',
-            fontWeight: 700,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
-            boxShadow: '0 2px 6px rgba(245, 158, 11, 0.35)',
-            transition: 'all 0.15s ease'
-          }}
-          onMouseEnter={(e) => (e.currentTarget.style.transform = 'translateY(-1px)')}
-          onMouseLeave={(e) => (e.currentTarget.style.transform = 'translateY(0)')}
-        >
-          <Sparkles size={12} fill="#FFFFFF" />
-          <span>Auto-Fill</span>
-        </button>
-      </div>
+      )}
 
-      {/* Global Auth Error Alert */}
+      {/* Auth Error Alert */}
       {authError && (
         <div style={{
           marginBottom: '18px',
@@ -151,7 +116,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
           gap: '8px',
           animation: 'pulse-soft 0.2s ease'
         }}>
-          <AlertCircle size={17} color="#DC2626" />
+          <AlertCircle size={17} color="#DC2626" style={{ flexShrink: 0 }} />
           <span>{authError}</span>
         </div>
       )}
@@ -184,7 +149,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
             </div>
             <input
               type="email"
-              placeholder="e.g. demo@student.com"
+              placeholder="name@example.com"
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value);
@@ -328,7 +293,7 @@ export const LoginForm: React.FC<LoginFormProps> = ({
               userSelect: 'none'
             }}
           >
-            Remember me on this device
+            Remember me
           </label>
         </div>
 

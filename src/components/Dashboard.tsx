@@ -13,12 +13,29 @@ import {
   Atom,
   Lightbulb,
   ShieldCheck,
-  Target
+  Target,
+  GraduationCap
 } from 'lucide-react';
 import { useStudent } from '../context/StudentContext';
+import { getTodaysLesson, getChapters } from '../services/curriculumService';
 
 export const Dashboard: React.FC = () => {
-  const { student, subjects, activities, setActiveTab, setActiveSubject } = useStudent();
+  const { student, subjects, activities, activeSubject, setActiveTab, setActiveSubject, currentLearningContext } = useStudent();
+
+  const todaysLesson = getTodaysLesson(
+    student.grade,
+    student.board,
+    student.stream,
+    activeSubject,
+    student.level
+  );
+
+  const currentSubjectChapters = getChapters(
+    student.grade,
+    student.board,
+    student.stream,
+    activeSubject
+  );
 
   return (
     <div style={{
@@ -29,7 +46,7 @@ export const Dashboard: React.FC = () => {
       flexDirection: 'column',
       gap: '28px'
     }}>
-      {/* Top Welcome Greeting Banner matching screenshot */}
+      {/* Top Welcome Greeting Banner */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -38,6 +55,23 @@ export const Dashboard: React.FC = () => {
         gap: '16px'
       }}>
         <div>
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            fontSize: '0.8rem',
+            fontWeight: 700,
+            color: '#4F46E5',
+            backgroundColor: '#EEF2FF',
+            padding: '4px 12px',
+            borderRadius: '999px',
+            marginBottom: '6px'
+          }}>
+            <GraduationCap size={15} />
+            <span>
+              {student.grade} • {student.board} {student.stream !== 'Not applicable' ? `• ${student.stream}` : ''}
+            </span>
+          </div>
           <h1 style={{
             fontSize: '1.9rem',
             fontWeight: 800,
@@ -51,7 +85,7 @@ export const Dashboard: React.FC = () => {
             <span>👋</span>
           </h1>
           <p style={{ color: '#64748B', fontSize: '0.95rem' }}>
-            Keep going! You're doing great. Your AI adaptive engine is continuously tuning your study plan.
+            Your curriculum is calibrated to {student.grade} ({student.board}). AI adaptive engine is continuously tuning your study plan.
           </p>
         </div>
 
@@ -74,7 +108,7 @@ export const Dashboard: React.FC = () => {
             boxShadow: `0 0 10px ${student.level === 'Advanced' ? '#10B981' : '#4F46E5'}`
           }} />
           <span style={{ fontSize: '0.85rem', color: '#64748B', fontWeight: 600 }}>
-            Curriculum Difficulty:
+            Difficulty:
           </span>
           <span style={{ fontSize: '0.9rem', color: '#1E293B', fontWeight: 800 }}>
             {student.level}
@@ -82,13 +116,13 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Row 1: Today's Learning + Motivational Card (Directly from Screenshot Panel 3!) */}
+      {/* Row 1: Today's Learning + Motivational Card */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(0, 1.8fr) minmax(0, 1.2fr)',
         gap: '24px'
       }}>
-        {/* Today's Learning Card */}
+        {/* Today's Learning Card (Dynamic according to activeSubject & academic profile) */}
         <div className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '16px' }}>
@@ -102,7 +136,7 @@ export const Dashboard: React.FC = () => {
                 Today's Learning
               </span>
               <span className="badge badge-info">
-                Active Session
+                {activeSubject} Active Session
               </span>
             </div>
 
@@ -111,50 +145,51 @@ export const Dashboard: React.FC = () => {
                 width: '52px',
                 height: '52px',
                 borderRadius: '16px',
-                background: 'linear-gradient(135deg, #ECFDF5 0%, #D1FAE5 100%)',
-                border: '1px solid #A7F3D0',
+                background: 'linear-gradient(135deg, #EEF2FF 0%, #E0E7FF 100%)',
+                border: '1px solid #C7D2FE',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                color: '#059669'
+                color: '#4F46E5',
+                fontSize: '1.6rem'
               }}>
-                <Atom size={28} />
+                {subjects.find(s => s.name === activeSubject)?.icon || '📚'}
               </div>
               <div>
-                <div style={{ fontSize: '0.85rem', color: '#059669', fontWeight: 700 }}>
-                  Science
+                <div style={{ fontSize: '0.85rem', color: '#4F46E5', fontWeight: 700 }}>
+                  {activeSubject} ({student.grade})
                 </div>
                 <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1E293B' }}>
-                  Carbon and Its Compounds
+                  {currentLearningContext.topic || todaysLesson.topic}
                 </h3>
+                <span style={{ fontSize: '0.78rem', color: '#64748B' }}>
+                  {currentLearningContext.chapter || todaysLesson.chapter}
+                </span>
               </div>
             </div>
 
             <div style={{ marginBottom: '20px' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.82rem', marginBottom: '6px' }}>
                 <span style={{ color: '#64748B', fontWeight: 600 }}>Mastery Progress</span>
-                <span style={{ color: '#4F46E5', fontWeight: 800 }}>62%</span>
+                <span style={{ color: '#4F46E5', fontWeight: 800 }}>{todaysLesson.progress}%</span>
               </div>
               <div className="progress-bar-container">
-                <div className="progress-bar-fill" style={{ width: '62%' }} />
+                <div className="progress-bar-fill" style={{ width: `${todaysLesson.progress}%` }} />
               </div>
             </div>
           </div>
 
           <button
-            onClick={() => {
-              setActiveSubject('Science');
-              setActiveTab('adaptive');
-            }}
+            onClick={() => setActiveTab('adaptive')}
             className="btn btn-primary"
             style={{ width: '100%', padding: '12px' }}
           >
-            <span>Continue Learning</span>
+            <span>Continue {activeSubject} Lesson</span>
             <ArrowRight size={17} />
           </button>
         </div>
 
-        {/* Motivational Card with Plant (Matching screenshot!) */}
+        {/* Motivational Card with Plant */}
         <div className="card" style={{
           padding: '24px',
           background: 'linear-gradient(145deg, #FAF5FF 0%, #F3E8FF 100%)',
@@ -198,18 +233,18 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
-      {/* Row 2: Today's Focus + Recent Activity (Directly from Screenshot Panel 3!) */}
+      {/* Row 2: Today's Focus (Dynamic for activeSubject) + Recent Activity */}
       <div style={{
         display: 'grid',
         gridTemplateColumns: 'minmax(0, 1.5fr) minmax(0, 1.5fr)',
         gap: '24px'
       }}>
-        {/* Today's Focus List */}
+        {/* Today's Focus List calibrated to active subject */}
         <div className="card" style={{ padding: '24px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '18px' }}>
             <h3 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Target size={18} color="#4F46E5" />
-              <span>Today's Focus</span>
+              <span>Today's Focus • {activeSubject}</span>
             </h3>
             <span style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600 }}>
               AI Prioritized
@@ -217,7 +252,7 @@ export const Dashboard: React.FC = () => {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {/* Functional Groups - High Priority */}
+            {/* Topic 1 - High Priority */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -230,7 +265,7 @@ export const Dashboard: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#EF4444' }} />
                 <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1E293B' }}>
-                  Functional Groups
+                  {currentSubjectChapters[0]?.topics[0]?.title || `${activeSubject} Core Fundamentals`}
                 </span>
               </div>
               <span className="badge badge-high-priority">
@@ -238,7 +273,7 @@ export const Dashboard: React.FC = () => {
               </span>
             </div>
 
-            {/* Chemical Reactions - Practice */}
+            {/* Topic 2 - Practice */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -251,7 +286,7 @@ export const Dashboard: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#F59E0B' }} />
                 <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1E293B' }}>
-                  Chemical Reactions
+                  {currentSubjectChapters[0]?.topics[1]?.title || `${activeSubject} Problem Sets`}
                 </span>
               </div>
               <span className="badge badge-practice">
@@ -259,7 +294,7 @@ export const Dashboard: React.FC = () => {
               </span>
             </div>
 
-            {/* Covalent Bonding - On Track */}
+            {/* Topic 3 - On Track */}
             <div style={{
               display: 'flex',
               alignItems: 'center',
@@ -272,7 +307,7 @@ export const Dashboard: React.FC = () => {
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10B981' }} />
                 <span style={{ fontSize: '0.9rem', fontWeight: 700, color: '#1E293B' }}>
-                  Covalent Bonding
+                  {currentSubjectChapters[1]?.topics[0]?.title || `Applied ${activeSubject} Review`}
                 </span>
               </div>
               <span className="badge badge-on-track">
@@ -450,6 +485,85 @@ export const Dashboard: React.FC = () => {
               Retention is highest when concepts are framed using <strong>{student.preferredStyle}</strong> explanations.
             </p>
           </div>
+        </div>
+      </div>
+
+      {/* Row: Enrolled Academic Subjects Section (Matching Section 16 Requirement) */}
+      <div className="card" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+          <div>
+            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4F46E5', textTransform: 'uppercase' }}>
+              {student.grade} • {student.board} {student.stream !== 'Not applicable' ? `• ${student.stream}` : ''}
+            </span>
+            <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#1E293B', margin: '2px 0 0' }}>
+              Your Enrolled Subjects
+            </h3>
+          </div>
+          <button
+            onClick={() => setActiveTab('subjects')}
+            className="btn btn-outline"
+            style={{ padding: '6px 14px', fontSize: '0.82rem' }}
+          >
+            <span>View All Subjects</span>
+            <ArrowRight size={14} />
+          </button>
+        </div>
+
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '16px'
+        }}>
+          {subjects.map((sub) => {
+            const isActive = sub.name.toLowerCase() === activeSubject.toLowerCase();
+            return (
+              <div
+                key={sub.id}
+                onClick={() => {
+                  setActiveSubject(sub.name);
+                  setActiveTab('adaptive');
+                }}
+                style={{
+                  padding: '16px',
+                  borderRadius: '16px',
+                  backgroundColor: isActive ? '#EEF2FF' : '#F8FAFC',
+                  border: isActive ? '2px solid #4F46E5' : '1px solid #E2E8F0',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  gap: '12px',
+                  boxShadow: isActive ? '0 4px 14px rgba(79, 70, 229, 0.1)' : 'none'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <span style={{ fontSize: '1.6rem' }}>{sub.icon}</span>
+                  <span style={{
+                    fontSize: '0.72rem',
+                    fontWeight: 700,
+                    color: sub.color,
+                    backgroundColor: sub.bgLight,
+                    padding: '2px 8px',
+                    borderRadius: '6px'
+                  }}>
+                    {sub.progress}% Mastery
+                  </span>
+                </div>
+                <div>
+                  <h4 style={{ fontSize: '1rem', fontWeight: 800, color: '#1E293B', margin: '0 0 4px' }}>
+                    {sub.name}
+                  </h4>
+                  <p style={{ fontSize: '0.75rem', color: '#64748B', margin: 0 }}>
+                    {sub.completedTopics} of {sub.totalTopics} Topics • Level: {sub.level}
+                  </p>
+                </div>
+                <div className="progress-bar-container" style={{ height: '5px' }}>
+                  <div className="progress-bar-fill" style={{ width: `${sub.progress}%`, backgroundColor: sub.color }} />
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

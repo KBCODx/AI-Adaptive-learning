@@ -222,7 +222,7 @@ export const Header: React.FC = () => {
                 {student.name}
               </div>
               <div style={{ fontSize: '0.7rem', color: '#64748B', fontWeight: 500 }}>
-                Class {student.grade} • {student.level}
+                {student.grade} • {student.board} {student.stream !== 'Not applicable' ? `• ${student.stream}` : ''}
               </div>
             </div>
             <ChevronDown
@@ -261,24 +261,11 @@ export const Header: React.FC = () => {
                   <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1E293B' }}>
                     {student.name}
                   </span>
-                  {user?.isDemo && (
-                    <span style={{
-                      fontSize: '0.62rem',
-                      fontWeight: 800,
-                      backgroundColor: '#FEF3C7',
-                      color: '#B45309',
-                      padding: '2px 6px',
-                      borderRadius: '999px',
-                      border: '1px solid #FDE68A'
-                    }}>
-                      DEMO
-                    </span>
-                  )}
                 </div>
                 <div style={{ fontSize: '0.74rem', color: '#64748B', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {user?.email || 'demo@student.com'}
+                  {user?.email || ''}
                 </div>
-                <div style={{ marginTop: '6px', display: 'flex', gap: '4px' }}>
+                <div style={{ marginTop: '6px', display: 'flex', flexWrap: 'wrap', gap: '4px' }}>
                   <span style={{
                     fontSize: '0.68rem',
                     fontWeight: 700,
@@ -297,7 +284,7 @@ export const Header: React.FC = () => {
                     backgroundColor: '#F1F5F9',
                     color: '#475569'
                   }}>
-                    Class {student.grade}
+                    {student.grade} • {student.board}
                   </span>
                 </div>
               </div>

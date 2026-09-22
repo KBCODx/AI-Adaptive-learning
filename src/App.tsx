@@ -160,7 +160,7 @@ const AppRoot: React.FC = () => {
             <Sparkles size={16} color="#F59E0B" fill="#F59E0B" />
           </div>
           <p style={{ fontSize: '0.84rem', color: '#64748B', marginTop: '4px' }}>
-            Preparing your personalized AI learning space...
+            Loading your learning environment...
           </p>
         </div>
       </div>

@@ -4,7 +4,7 @@ import { useStudent } from '../context/StudentContext';
 import { SubjectType } from '../types';
 
 export const SubjectsView: React.FC = () => {
-  const { subjects, setActiveSubject, setActiveTab } = useStudent();
+  const { student, subjects, setActiveSubject, setActiveTab } = useStudent();
 
   const handleContinue = (subjectName: SubjectType) => {
     setActiveSubject(subjectName);
@@ -36,7 +36,7 @@ export const SubjectsView: React.FC = () => {
           </p>
         </div>
         <span className="badge badge-info">
-          5 Subjects Active
+          {subjects.length} Subjects Active • {student.grade} ({student.board})
         </span>
       </div>
 
