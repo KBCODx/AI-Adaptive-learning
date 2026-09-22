@@ -3,33 +3,32 @@ import {
   LearningStyle,
   SubjectType,
   DifficultyLevel,
+  ClassLevel,
+  BoardType,
+  StreamType,
+  StudentProfile,
   SubjectData,
   RecommendationItem,
   StudyPlanItem,
   LearningPathNode,
   ActivityItem,
-  QuizResult
+  QuizResult,
+  ParsedMaterial
 } from '../types';
 import {
-  INITIAL_SUBJECTS,
-  INITIAL_RECOMMENDATIONS,
   INITIAL_STUDY_PLAN,
-  INITIAL_LEARNING_PATH,
   INITIAL_ACTIVITIES
 } from '../data/mockCurriculum';
+import {
+  getAvailableSubjects,
+  getRecommendations,
+  getLearningPath,
+  normalizeGrade
+} from '../services/curriculumService';
 import { useAuth } from './AuthContext';
+import { processUploadedFile } from '../services/fileProcessingService';
 
-export interface StudentProfile {
-  name: string;
-  grade: string;
-  level: DifficultyLevel;
-  streak: number;
-  overallProgress: number;
-  overallAccuracy: number;
-  completedLessons: number;
-  xp: number;
-  preferredStyle: LearningStyle;
-}
+const STORAGE_KEY = 'gurumitra_academic_profile';
 
 interface StudentContextType {
   student: StudentProfile;
@@ -43,79 +42,238 @@ interface StudentContextType {
   lastQuizResult: QuizResult | null;
   notification: { message: string; type: 'success' | 'info' | 'warning' } | null;
   judgeDemoStep: number;
+  uploadedMaterial: ParsedMaterial | null;
+  uploadState: 'idle' | 'uploading' | 'analyzing' | 'ready' | 'error';
+  uploadError: string | null;
   setActiveTab: (tab: string) => void;
   setActiveSubject: (subject: SubjectType) => void;
   setPreferredStyle: (style: LearningStyle) => void;
-  updateProfile: (name: string, grade: string, style: LearningStyle) => void;
+  setAcademicProfile: (
+    grade: ClassLevel,
+    board: BoardType,
+    stream: StreamType,
+    style?: LearningStyle,
+    level?: DifficultyLevel
+  ) => void;
+  updateProfile: (
+    name: string,
+    grade: ClassLevel | string,
+    style: LearningStyle,
+    board?: BoardType,
+    stream?: StreamType
+  ) => void;
   toggleStudyPlanItem: (id: string) => void;
   recordQuizResult: (result: QuizResult) => void;
   setJudgeDemoStep: (step: number) => void;
   resetToDefault: () => void;
   clearNotification: () => void;
+  processAndSetFile: (file: File) => Promise<ParsedMaterial>;
+  removeUploadedMaterial: () => void;
+  clearUploadError: () => void;
 }
 
 const StudentContext = createContext<StudentContextType | undefined>(undefined);
 
+// Helper to load persistent academic profile
+function loadInitialAcademicProfile(): {
+  grade: ClassLevel;
+  board: BoardType;
+  stream: StreamType;
+  preferredStyle: LearningStyle;
+  level: DifficultyLevel;
+} {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return {
+        grade: normalizeGrade(parsed.grade),
+        board: (parsed.board as BoardType) || 'CBSE',
+        stream: (parsed.stream as StreamType) || 'Not applicable',
+        preferredStyle: (parsed.preferredStyle as LearningStyle) || 'Simple',
+        level: (parsed.level as DifficultyLevel) || 'Beginner'
+      };
+    }
+  } catch (e) {
+    // Ignore localStorage read errors
+  }
+  return {
+    grade: 'Class 9',
+    board: 'CBSE',
+    stream: 'Not applicable',
+    preferredStyle: 'Simple',
+    level: 'Beginner'
+  };
+}
+
 export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
+  const initialAcademic = loadInitialAcademicProfile();
 
   const [student, setStudent] = useState<StudentProfile>({
-    name: user ? user.name : 'Khushi Dixit',
-    grade: user ? user.grade : '10th',
-    level: user ? user.level : 'Intermediate',
+    name: user?.name || 'Khushi Dixit',
+    grade: initialAcademic.grade,
+    board: initialAcademic.board,
+    stream: initialAcademic.stream,
+    level: user?.level || initialAcademic.level,
     streak: 4,
     overallProgress: 76,
     overallAccuracy: 82,
     completedLessons: 24,
     xp: 1420,
-    preferredStyle: user ? user.preferredStyle : 'Simple'
+    preferredStyle: user?.preferredStyle || initialAcademic.preferredStyle
   });
 
-  const [subjects, setSubjects] = useState<SubjectData[]>(INITIAL_SUBJECTS);
-  const [recommendations, setRecommendations] = useState<RecommendationItem[]>(INITIAL_RECOMMENDATIONS);
+  // Dynamically initialize subjects based on academic profile
+  const [subjects, setSubjects] = useState<SubjectData[]>(() =>
+    getAvailableSubjects(student.grade, student.board, student.stream)
+  );
+
+  const [activeSubject, setActiveSubjectState] = useState<SubjectType>(() => {
+    const initialSubs = getAvailableSubjects(student.grade, student.board, student.stream);
+    return initialSubs[0]?.name || 'Mathematics';
+  });
+
+  const [recommendations, setRecommendations] = useState<RecommendationItem[]>(() =>
+    getRecommendations(student.grade, student.board, student.stream, activeSubject)
+  );
   const [studyPlan, setStudyPlan] = useState<StudyPlanItem[]>(INITIAL_STUDY_PLAN);
-  const [learningPath, setLearningPath] = useState<LearningPathNode[]>(INITIAL_LEARNING_PATH);
+  const [learningPath, setLearningPath] = useState<LearningPathNode[]>(() =>
+    getLearningPath(student.grade, student.board, student.stream, activeSubject)
+  );
   const [activities, setActivities] = useState<ActivityItem[]>(INITIAL_ACTIVITIES);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [activeSubject, setActiveSubject] = useState<SubjectType>('Science');
   const [lastQuizResult, setLastQuizResult] = useState<QuizResult | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'warning' } | null>(null);
   const [judgeDemoStep, setJudgeDemoStep] = useState<number>(0);
+  const [uploadedMaterial, setUploadedMaterial] = useState<ParsedMaterial | null>(null);
+  const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'analyzing' | 'ready' | 'error'>('idle');
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
-  // Synchronize student profile whenever auth user changes (e.g. login, signup, demo)
+  // Synchronize student profile whenever auth user changes
   useEffect(() => {
     if (user) {
+      const userGrade = normalizeGrade(user.grade);
       setStudent((prev) => ({
         ...prev,
         name: user.name,
-        grade: user.grade || '10th',
-        level: user.level || 'Intermediate',
-        preferredStyle: user.preferredStyle || 'Simple'
+        grade: userGrade,
+        level: user.level || prev.level,
+        preferredStyle: user.preferredStyle || prev.preferredStyle
       }));
-
-      // If user selected preferred subjects, set active subject to first one if available
-      if (user.preferredSubjects && user.preferredSubjects.length > 0) {
-        setActiveSubject(user.preferredSubjects[0]);
-      }
     }
   }, [user]);
+
+  // Set active subject and automatically sync subject-specific recommendations & learning path
+  const setActiveSubject = (subject: SubjectType) => {
+    setActiveSubjectState(subject);
+    const updatedRecs = getRecommendations(student.grade, student.board, student.stream, subject);
+    setRecommendations(updatedRecs);
+    const updatedPath = getLearningPath(student.grade, student.board, student.stream, subject);
+    setLearningPath(updatedPath);
+  };
+
+  // Comprehensive Academic Profile Switcher
+  const setAcademicProfile = (
+    grade: ClassLevel,
+    board: BoardType,
+    stream: StreamType,
+    style?: LearningStyle,
+    level?: DifficultyLevel
+  ) => {
+    const normGrade = normalizeGrade(grade);
+    const isSenior = normGrade === 'Class 11' || normGrade === 'Class 12';
+    const effectiveStream: StreamType = isSenior
+      ? (stream === 'Not applicable' ? 'Science' : stream)
+      : 'Not applicable';
+
+    const newSubjects = getAvailableSubjects(normGrade, board, effectiveStream);
+    setSubjects(newSubjects);
+
+    // If current subject is not in new subject list, switch to first available
+    let nextSubject = activeSubject;
+    const exists = newSubjects.some((s) => s.name.toLowerCase() === activeSubject.toLowerCase());
+    if (!exists && newSubjects.length > 0) {
+      nextSubject = newSubjects[0].name;
+      setActiveSubjectState(nextSubject);
+    }
+
+    const newPreferredStyle = style || student.preferredStyle;
+    const newLevel = level || student.level;
+
+    setStudent((prev) => ({
+      ...prev,
+      grade: normGrade,
+      board,
+      stream: effectiveStream,
+      preferredStyle: newPreferredStyle,
+      level: newLevel
+    }));
+
+    // Update recommendations and path for the new curriculum
+    setRecommendations(getRecommendations(normGrade, board, effectiveStream, nextSubject));
+    setLearningPath(getLearningPath(normGrade, board, effectiveStream, nextSubject));
+
+    // Persist to localStorage
+    try {
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({
+          grade: normGrade,
+          board,
+          stream: effectiveStream,
+          preferredStyle: newPreferredStyle,
+          level: newLevel
+        })
+      );
+    } catch (e) {
+      // Ignore localStorage write errors
+    }
+
+    setNotification({
+      message: `Curriculum calibrated to ${normGrade} • ${board}${effectiveStream !== 'Not applicable' ? ' • ' + effectiveStream : ''}. Subject list updated!`,
+      type: 'success'
+    });
+  };
 
   const clearNotification = () => setNotification(null);
 
   const setPreferredStyle = (style: LearningStyle) => {
-    setStudent((prev) => ({ ...prev, preferredStyle: style }));
+    setStudent((prev) => {
+      const updated = { ...prev, preferredStyle: style };
+      try {
+        localStorage.setItem(
+          STORAGE_KEY,
+          JSON.stringify({
+            grade: updated.grade,
+            board: updated.board,
+            stream: updated.stream,
+            preferredStyle: style,
+            level: updated.level
+          })
+        );
+      } catch (e) {}
+      return updated;
+    });
     setNotification({
       message: `Preferred learning style updated to "${style}". AI content adapted!`,
       type: 'info'
     });
   };
 
-  const updateProfile = (name: string, grade: string, style: LearningStyle) => {
-    setStudent((prev) => ({ ...prev, name, grade, preferredStyle: style }));
-    setNotification({
-      message: 'Student profile updated successfully!',
-      type: 'success'
-    });
+  const updateProfile = (
+    name: string,
+    grade: ClassLevel | string,
+    style: LearningStyle,
+    board?: BoardType,
+    stream?: StreamType
+  ) => {
+    const normGrade = normalizeGrade(grade);
+    const targetBoard = board || student.board;
+    const targetStream = stream || student.stream;
+
+    setAcademicProfile(normGrade, targetBoard, targetStream, style);
+    setStudent((prev) => ({ ...prev, name }));
   };
 
   const toggleStudyPlanItem = (id: string) => {
@@ -285,25 +443,83 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   };
 
+  const clearUploadError = () => setUploadError(null);
+
+  const removeUploadedMaterial = () => {
+    setUploadedMaterial(null);
+    setUploadState('idle');
+    setUploadError(null);
+    setNotification({
+      message: 'Uploaded material removed from AI Tutor session.',
+      type: 'info'
+    });
+  };
+
+  const processAndSetFile = async (file: File): Promise<ParsedMaterial> => {
+    setUploadState('uploading');
+    setUploadError(null);
+
+    try {
+      // Step 1: Uploading state
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      setUploadState('analyzing');
+
+      // Step 2: Genuine text parsing & topic extraction
+      const parsed = await processUploadedFile(file);
+
+      // Brief animation pause for genuine analytical feedback
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      setUploadedMaterial(parsed);
+      setUploadState('ready');
+
+      setNotification({
+        message: `Successfully analyzed "${file.name}" (${parsed.wordCount} words, ${parsed.topics.length} topics found). Connected to AI Tutor!`,
+        type: 'success'
+      });
+
+      return parsed;
+    } catch (err: any) {
+      setUploadState('error');
+      const msg = err?.message || 'Couldn\'t read this file. Please try another supported file.';
+      setUploadError(msg);
+      setNotification({
+        message: msg,
+        type: 'warning'
+      });
+      throw err;
+    }
+  };
+
   const resetToDefault = () => {
     setStudent({
-      name: user ? user.name : 'Khushi Dixit',
-      grade: user ? user.grade : '10th',
-      level: user ? user.level : 'Intermediate',
+      name: user?.name || 'Khushi Dixit',
+      grade: 'Class 9',
+      board: 'CBSE',
+      stream: 'Not applicable',
+      level: 'Beginner',
       streak: 4,
       overallProgress: 76,
       overallAccuracy: 82,
       completedLessons: 24,
       xp: 1420,
-      preferredStyle: user ? user.preferredStyle : 'Simple'
+      preferredStyle: 'Simple'
     });
-    setSubjects(INITIAL_SUBJECTS);
-    setRecommendations(INITIAL_RECOMMENDATIONS);
+    const defSubs = getAvailableSubjects('Class 9', 'CBSE', 'Not applicable');
+    setSubjects(defSubs);
+    setActiveSubjectState(defSubs[0]?.name || 'Mathematics');
+    setRecommendations(getRecommendations('Class 9', 'CBSE', 'Not applicable', defSubs[0]?.name || 'Mathematics'));
     setStudyPlan(INITIAL_STUDY_PLAN);
-    setLearningPath(INITIAL_LEARNING_PATH);
+    setLearningPath(getLearningPath('Class 9', 'CBSE', 'Not applicable', defSubs[0]?.name || 'Mathematics'));
     setActivities(INITIAL_ACTIVITIES);
     setLastQuizResult(null);
     setJudgeDemoStep(0);
+    setUploadedMaterial(null);
+    setUploadState('idle');
+    setUploadError(null);
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (e) {}
     setNotification({
       message: 'Demo state reset to initial baseline successfully!',
       type: 'info'
@@ -324,15 +540,22 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         lastQuizResult,
         notification,
         judgeDemoStep,
+        uploadedMaterial,
+        uploadState,
+        uploadError,
         setActiveTab,
         setActiveSubject,
         setPreferredStyle,
+        setAcademicProfile,
         updateProfile,
         toggleStudyPlanItem,
         recordQuizResult,
         setJudgeDemoStep,
         resetToDefault,
-        clearNotification
+        clearNotification,
+        processAndSetFile,
+        removeUploadedMaterial,
+        clearUploadError
       }}
     >
       {children}

@@ -1,8 +1,99 @@
 export type LearningStyle = 'Simple' | 'Analogy' | 'Visual' | 'Exam-oriented';
 
-export type SubjectType = 'Mathematics' | 'Science' | 'English' | 'Computer Science' | 'Social Science';
+export type ClassLevel =
+  | 'Class 6'
+  | 'Class 7'
+  | 'Class 8'
+  | 'Class 9'
+  | 'Class 10'
+  | 'Class 11'
+  | 'Class 12';
+
+export type BoardType = 'CBSE' | 'ICSE' | 'UP Board';
+
+export type StreamType = 'Science' | 'Commerce' | 'Humanities / Arts' | 'Not applicable';
 
 export type DifficultyLevel = 'Beginner' | 'Intermediate' | 'Advanced';
+
+export type SubjectType =
+  | 'Mathematics'
+  | 'Science'
+  | 'English'
+  | 'Computer Science'
+  | 'Social Science'
+  | 'Hindi'
+  | 'Physics'
+  | 'Chemistry'
+  | 'Biology'
+  | 'Accountancy'
+  | 'Business Studies'
+  | 'Economics'
+  | 'History'
+  | 'Political Science'
+  | 'Geography'
+  | string;
+
+export interface CurriculumTopic {
+  id: string;
+  title: string;
+  difficulty: DifficultyLevel;
+  keyPoints: string[];
+  formulas?: string[];
+  summary: string;
+}
+
+export interface CurriculumChapter {
+  id: string;
+  number: number;
+  title: string;
+  subject: string;
+  classLevel: ClassLevel;
+  board: BoardType;
+  stream?: StreamType;
+  description: string;
+  topics: CurriculumTopic[];
+}
+
+export interface CurriculumLessonContent {
+  subject: string;
+  classLevel: ClassLevel;
+  board: BoardType;
+  stream: StreamType;
+  chapterId: string;
+  chapterTitle: string;
+  topicId: string;
+  topicTitle: string;
+  difficulty: DifficultyLevel;
+  progress: number;
+  styles: Record<
+    LearningStyle,
+    {
+      heading: string;
+      paragraph: string;
+      subtext: string;
+      tip: string;
+      bulletPoints?: string[];
+      exampleBox?: string;
+    }
+  >;
+}
+
+export interface StudentAcademicProfile {
+  grade: ClassLevel;
+  board: BoardType;
+  stream: StreamType;
+  preferredStyle: LearningStyle;
+  level: DifficultyLevel;
+}
+
+export interface StudentProfile extends StudentAcademicProfile {
+  name: string;
+  streak: number;
+  overallProgress: number;
+  overallAccuracy: number;
+  completedLessons: number;
+  xp: number;
+}
 
 export interface SubjectData {
   id: string;
@@ -87,6 +178,22 @@ export interface QuizResult {
   userAnswers: { questionIndex: number; selectedIndex: number; isCorrect: boolean }[];
 }
 
+export interface ParsedMaterial {
+  id: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  fileSizeFormatted: string;
+  extractedText: string;
+  summaryPreview: string;
+  wordCount: number;
+  topics: {
+    title: string;
+    concepts: string;
+  }[];
+  uploadedAt: string;
+}
+
 export interface TutorMessage {
   id: string;
   sender: 'student' | 'tutor';
@@ -94,14 +201,26 @@ export interface TutorMessage {
   timestamp: string;
   subject?: SubjectType;
   styleUsed?: LearningStyle;
+  attachedFile?: string;
   structuredResponse?: {
+    responseType?: 'conceptual' | 'mathematical' | 'programming' | 'document' | 'general';
+    crossSubjectNotice?: string;
     directAnswer: string;
     simpleExplanation: string;
+    example?: string;
     stepByStep?: string[];
     analogy?: string;
     keyConcept: string;
     formulaOrCode?: string;
+    codeExplanation?: string;
+    complexity?: {
+      time: string;
+      space: string;
+    };
     visualDiagram?: string;
+    relevantContentFound?: string;
+    documentReference?: string;
+    followUpQuestions?: string[];
     practiceQuestion?: {
       question: string;
       options?: string[];
@@ -110,16 +229,29 @@ export interface TutorMessage {
   };
 }
 
+export interface UserProfile {
+  id: string;
+  full_name: string;
+  learning_level: DifficultyLevel;
+  preferred_subjects: SubjectType[];
+  grade?: ClassLevel | string;
+  board?: BoardType;
+  stream?: StreamType;
+  created_at?: string;
+  updated_at?: string;
+}
+
 export interface AuthUser {
   id: string;
-  name: string;
   email: string;
-  grade: string;
+  name: string;
   level: DifficultyLevel;
   preferredSubjects: SubjectType[];
-  preferredStyle: LearningStyle;
-  isDemo?: boolean;
-  createdAt: string;
+  grade?: ClassLevel | string;
+  board?: BoardType;
+  stream?: StreamType;
+  preferredStyle?: LearningStyle;
+  createdAt?: string;
 }
 
 export interface LoginCredentials {
@@ -133,7 +265,9 @@ export interface SignUpData {
   email: string;
   password: string;
   confirmPassword?: string;
-  grade: string;
+  grade?: ClassLevel | string;
+  board?: BoardType;
+  stream?: StreamType;
   level: DifficultyLevel;
   preferredSubjects: SubjectType[];
 }

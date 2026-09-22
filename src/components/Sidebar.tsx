@@ -163,48 +163,6 @@ export const Sidebar: React.FC = () => {
           );
         })}
       </nav>
-
-      {/* Team Sticky Note matching user reference! */}
-      <div style={{
-        padding: '14px 14px 20px',
-        borderTop: '1px solid #F1F5F9'
-      }}>
-        <div style={{
-          background: '#FEF9C3', // Warm yellow sticky note
-          border: '1px solid #FDE047',
-          borderRadius: '12px',
-          padding: '12px 14px',
-          boxShadow: '0 4px 12px rgba(234, 179, 8, 0.12)',
-          transform: 'rotate(-0.5deg)',
-          position: 'relative'
-        }}>
-          <div style={{
-            fontSize: '0.72rem',
-            fontWeight: 800,
-            color: '#854D0E',
-            textTransform: 'uppercase',
-            letterSpacing: '0.04em',
-            marginBottom: '4px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '5px'
-          }}>
-            <span>📌 Team GuruMitra</span>
-          </div>
-          <p style={{ fontSize: '0.74rem', color: '#713F12', lineHeight: '1.4', fontWeight: 600 }}>
-            Khushi Dixit • Krishna Bansal<br />
-            Mahi Shukla • Tanmay
-          </p>
-          <div style={{
-            marginTop: '8px',
-            fontSize: '0.68rem',
-            color: '#A16207',
-            fontStyle: 'italic'
-          }}>
-            "Because every student learns differently ♡"
-          </div>
-        </div>
-      </div>
     </aside>
   );
 };

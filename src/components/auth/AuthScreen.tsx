@@ -252,17 +252,17 @@ export const AuthScreen: React.FC = () => {
                 </div>
                 <div>
                   <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#FFFFFF' }}>
-                    Targeted Remedial Plans
+                    Personalized Learning Path
                   </div>
                   <div style={{ fontSize: '0.76rem', color: '#CBD5E1' }}>
-                    Flags weak areas instantly and schedules reinforcement
+                    Custom progression dynamically tuned to your mastery
                   </div>
                 </div>
               </div>
             </div>
           </div>
 
-          {/* Bottom: Team Credit */}
+          {/* Bottom: Product Footer (No team text) */}
           <div style={{
             position: 'relative',
             zIndex: 2,
@@ -274,7 +274,7 @@ export const AuthScreen: React.FC = () => {
             fontSize: '0.78rem',
             color: '#CBD5E1'
           }}>
-            <span>Team GuruMitra • Hackathon 2026</span>
+            <span>AI Adaptive Learning Platform</span>
             <span style={{ display: 'flex', alignItems: 'center', gap: '4px', color: '#FDE047' }}>
               <Sparkles size={13} />
               <span>Adaptive AI Engine v2.0</span>

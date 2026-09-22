@@ -19,6 +19,8 @@ export const JudgeDemoTour: React.FC = () => {
     recordQuizResult
   } = useStudent();
 
+  const [isMinimized, setIsMinimized] = React.useState(false);
+
   if (judgeDemoStep === 0) return null;
 
   const demoSteps = [
@@ -26,7 +28,7 @@ export const JudgeDemoTour: React.FC = () => {
       step: 1,
       title: 'Step 1: Student Dashboard Overview',
       tab: 'dashboard',
-      instruction: 'Observe Khushi’s baseline status (Intermediate, 76% progress, Today’s Focus with Functional Groups marked High Priority).',
+      instruction: 'Observe Khushi’s baseline status (Beginner, 76% progress, Today’s Focus with Functional Groups marked High Priority).',
       actionText: 'Go to AI Tutor',
       action: () => {
         setActiveTab('tutor');
@@ -38,7 +40,7 @@ export const JudgeDemoTour: React.FC = () => {
       step: 2,
       title: 'Step 2: AI Tutor — Mathematics',
       tab: 'tutor',
-      instruction: 'Tutor is set to Mathematics. Click "Explain quadratic equations in simple words" to see the structured breakdown & formula.',
+      instruction: 'Tutor is set to Mathematics. Try "Solve 2x + 5 = 15" or "Explain quadratic equations" to see step-by-step calculations.',
       actionText: 'Switch to Science Tutor',
       action: () => {
         setActiveTab('tutor');
@@ -50,7 +52,7 @@ export const JudgeDemoTour: React.FC = () => {
       step: 3,
       title: 'Step 3: AI Tutor — Science',
       tab: 'tutor',
-      instruction: 'Tutor context seamlessly switches to Science. Click "Why does photosynthesis occur?" to see the biological and chemical breakdown.',
+      instruction: 'Tutor context seamlessly switches to Science. Try "Explain photosynthesis" to see the biological and chemical breakdown.',
       actionText: 'Switch to Computer Science',
       action: () => {
         setActiveTab('tutor');
@@ -62,7 +64,7 @@ export const JudgeDemoTour: React.FC = () => {
       step: 4,
       title: 'Step 4: AI Tutor — Computer Science',
       tab: 'tutor',
-      instruction: 'Tutor context shifts to CS. Click "What is a binary tree?" to see tree hierarchy and tree traversals.',
+      instruction: 'Tutor context shifts to CS. Try "What is a binary tree?" or "Explain recursion" to see code and complexity.',
       actionText: 'Launch Adaptive Quiz',
       action: () => {
         setActiveTab('quiz');
@@ -142,9 +144,9 @@ export const JudgeDemoTour: React.FC = () => {
     },
     {
       step: 10,
-      title: 'Step 10: Complete Hackathon Flow Validated!',
+      title: 'Step 10: Complete Flow Validated!',
       tab: 'dashboard',
-      instruction: 'The dashboard reflects newly adapted priorities, updated accuracy, and recent AI actions. USP successfully proven to judges!',
+      instruction: 'The dashboard reflects newly adapted priorities, updated accuracy, and recent AI actions. Core USP successfully proven!',
       actionText: 'Finish Tour',
       action: () => {
         setJudgeDemoStep(0);
@@ -154,10 +156,66 @@ export const JudgeDemoTour: React.FC = () => {
 
   const current = demoSteps.find((s) => s.step === judgeDemoStep) || demoSteps[0];
 
+  // Minimized Floating Pill - leaves AI Tutor chat input completely unobstructed!
+  if (isMinimized) {
+    return (
+      <div style={{
+        position: 'fixed',
+        bottom: '18px',
+        right: '24px',
+        background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)',
+        color: '#FFFFFF',
+        borderRadius: '999px',
+        padding: '8px 16px',
+        boxShadow: '0 10px 25px rgba(15, 23, 42, 0.4)',
+        zIndex: 100,
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px'
+      }}>
+        <button
+          onClick={() => setIsMinimized(false)}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: '#FCD34D',
+            fontSize: '0.78rem',
+            fontWeight: 800,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            cursor: 'pointer'
+          }}
+        >
+          <Sparkles size={13} />
+          <span>Demo Step {current.step}/10 • Click to Expand</span>
+        </button>
+        <button
+          onClick={() => setJudgeDemoStep(0)}
+          style={{
+            background: 'rgba(255, 255, 255, 0.15)',
+            border: 'none',
+            color: '#CBD5E1',
+            width: '20px',
+            height: '20px',
+            borderRadius: '50%',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer'
+          }}
+          title="Exit Demo Tour"
+        >
+          <X size={12} />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       position: 'fixed',
-      bottom: '24px',
+      bottom: '16px',
       left: '50%',
       transform: 'translateX(-50%)',
       width: '90%',
@@ -165,14 +223,13 @@ export const JudgeDemoTour: React.FC = () => {
       background: 'linear-gradient(135deg, #1E1B4B 0%, #312E81 100%)',
       color: '#FFFFFF',
       borderRadius: '20px',
-      padding: '16px 24px',
+      padding: '14px 22px',
       boxShadow: '0 20px 40px -10px rgba(15, 23, 42, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.1)',
       zIndex: 100,
       backdropFilter: 'blur(12px)',
       display: 'flex',
       flexDirection: 'column',
-      gap: '12px',
-      animation: 'float-gentle 6s infinite ease-in-out'
+      gap: '10px'
     }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -180,7 +237,7 @@ export const JudgeDemoTour: React.FC = () => {
             background: 'rgba(245, 158, 11, 0.25)',
             border: '1px solid #F59E0B',
             color: '#FCD34D',
-            padding: '4px 10px',
+            padding: '3px 10px',
             borderRadius: '999px',
             fontSize: '0.72rem',
             fontWeight: 800,
@@ -191,37 +248,58 @@ export const JudgeDemoTour: React.FC = () => {
             <Sparkles size={13} />
             <span>JUDGE DEMO MODE • STEP {current.step}/10</span>
           </div>
-          <h4 style={{ color: '#FFFFFF', fontSize: '1rem', fontWeight: 700, margin: 0 }}>
+          <h4 style={{ color: '#FFFFFF', fontSize: '0.95rem', fontWeight: 700, margin: 0 }}>
             {current.title}
           </h4>
         </div>
 
-        <button
-          onClick={() => setJudgeDemoStep(0)}
-          style={{
-            background: 'rgba(255, 255, 255, 0.12)',
-            border: 'none',
-            color: '#CBD5E1',
-            width: '28px',
-            height: '28px',
-            borderRadius: '50%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            cursor: 'pointer'
-          }}
-          title="Exit Demo Tour"
-        >
-          <X size={16} />
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          {/* Minimize button to clear space for AI Tutor */}
+          <button
+            onClick={() => setIsMinimized(true)}
+            style={{
+              background: 'rgba(255, 255, 255, 0.12)',
+              border: 'none',
+              color: '#CBD5E1',
+              padding: '4px 10px',
+              borderRadius: '8px',
+              fontSize: '0.72rem',
+              fontWeight: 600,
+              cursor: 'pointer'
+            }}
+            title="Minimize tour banner"
+          >
+            Minimize
+          </button>
+
+          {/* Close button */}
+          <button
+            onClick={() => setJudgeDemoStep(0)}
+            style={{
+              background: 'rgba(255, 255, 255, 0.12)',
+              border: 'none',
+              color: '#CBD5E1',
+              width: '26px',
+              height: '26px',
+              borderRadius: '50%',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              cursor: 'pointer'
+            }}
+            title="Exit Demo Tour"
+          >
+            <X size={15} />
+          </button>
+        </div>
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '20px' }}>
-        <p style={{ margin: 0, fontSize: '0.85rem', color: '#E0E7FF', lineHeight: '1.4', flex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px' }}>
+        <p style={{ margin: 0, fontSize: '0.82rem', color: '#E0E7FF', lineHeight: '1.4', flex: 1 }}>
           {current.instruction}
         </p>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           {current.step > 1 && (
             <button
               onClick={() => {
@@ -235,9 +313,9 @@ export const JudgeDemoTour: React.FC = () => {
                 background: 'rgba(255, 255, 255, 0.15)',
                 border: 'none',
                 color: '#FFFFFF',
-                padding: '8px 12px',
+                padding: '7px 12px',
                 borderRadius: '10px',
-                fontSize: '0.8rem',
+                fontSize: '0.78rem',
                 fontWeight: 600,
                 cursor: 'pointer',
                 display: 'flex',
@@ -245,7 +323,7 @@ export const JudgeDemoTour: React.FC = () => {
                 gap: '4px'
               }}
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft size={15} />
               <span>Back</span>
             </button>
           )}
@@ -256,19 +334,19 @@ export const JudgeDemoTour: React.FC = () => {
               background: 'linear-gradient(135deg, #4F46E5 0%, #7C3AED 100%)',
               border: 'none',
               color: '#FFFFFF',
-              padding: '9px 18px',
-              borderRadius: '12px',
-              fontSize: '0.85rem',
+              padding: '8px 16px',
+              borderRadius: '10px',
+              fontSize: '0.82rem',
               fontWeight: 700,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
-              gap: '8px',
-              boxShadow: '0 6px 18px rgba(79, 70, 229, 0.5)'
+              gap: '6px',
+              boxShadow: '0 4px 14px rgba(79, 70, 229, 0.5)'
             }}
           >
             <span>{current.actionText}</span>
-            <ChevronRight size={16} />
+            <ChevronRight size={15} />
           </button>
         </div>
       </div>

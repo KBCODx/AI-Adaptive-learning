@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, ArrowLeft, Loader2, CheckCircle2, AlertCircle, Info } from 'lucide-react';
+import { Mail, ArrowLeft, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
 interface ForgotPasswordProps {
@@ -11,12 +11,14 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordProps> = ({ onBackToLog
   const [email, setEmail] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [emailError, setEmailError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setEmailError(null);
     setStatusMessage(null);
+    setErrorMessage(null);
 
     if (!email.trim()) {
       setEmailError('Please enter your email.');
@@ -31,7 +33,11 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordProps> = ({ onBackToLog
     setIsSubmitting(true);
     try {
       const res = await resetPassword(email.trim());
-      setStatusMessage(res.message);
+      if (res.success) {
+        setStatusMessage(res.message);
+      } else {
+        setErrorMessage(res.error || res.message);
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -73,11 +79,31 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordProps> = ({ onBackToLog
           Reset your password
         </h2>
         <p style={{ color: '#64748B', fontSize: '0.92rem', margin: 0 }}>
-          Enter the email address associated with your account, and we'll simulate sending you a password reset link.
+          Enter the email address associated with your account, and we'll send you instructions to reset your password.
         </p>
       </div>
 
-      {/* Status or Simulation Confirmation */}
+      {/* Error alert */}
+      {errorMessage && (
+        <div style={{
+          marginBottom: '18px',
+          padding: '12px 14px',
+          borderRadius: '12px',
+          background: '#FEF2F2',
+          border: '1px solid #FECACA',
+          color: '#DC2626',
+          fontSize: '0.86rem',
+          fontWeight: 600,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px'
+        }}>
+          <AlertCircle size={17} color="#DC2626" style={{ flexShrink: 0 }} />
+          <span>{errorMessage}</span>
+        </div>
+      )}
+
+      {/* Confirmation Message */}
       {statusMessage ? (
         <div style={{
           padding: '20px',
@@ -97,19 +123,6 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordProps> = ({ onBackToLog
           <p style={{ fontSize: '0.88rem', color: '#047857', margin: 0, lineHeight: 1.5 }}>
             {statusMessage}
           </p>
-          <div style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '6px',
-            fontSize: '0.78rem',
-            color: '#059669',
-            background: 'rgba(255,255,255,0.6)',
-            padding: '8px 10px',
-            borderRadius: '8px'
-          }}>
-            <Info size={14} style={{ marginTop: '2px', flexShrink: 0 }} />
-            <span>Note: This is a hackathon prototype simulation. No real email is dispatched unless an external email service is integrated.</span>
-          </div>
           <button
             type="button"
             onClick={onBackToLogin}
@@ -147,11 +160,12 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordProps> = ({ onBackToLog
               </div>
               <input
                 type="email"
-                placeholder="e.g. student@school.com"
+                placeholder="name@example.com"
                 value={email}
                 onChange={(e) => {
                   setEmail(e.target.value);
                   if (emailError) setEmailError(null);
+                  if (errorMessage) setErrorMessage(null);
                 }}
                 style={{
                   width: '100%',
@@ -170,22 +184,6 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordProps> = ({ onBackToLog
                 {emailError}
               </p>
             )}
-          </div>
-
-          {/* Prototype notice */}
-          <div style={{
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '8px',
-            padding: '10px 12px',
-            background: '#F8FAFC',
-            borderRadius: '10px',
-            border: '1px solid var(--border-subtle)',
-            fontSize: '0.78rem',
-            color: '#64748B'
-          }}>
-            <Info size={16} color="#64748B" style={{ flexShrink: 0, marginTop: '2px' }} />
-            <span>For this prototype, clicking below will simulate sending a password reset email link.</span>
           </div>
 
           {/* Submit button */}

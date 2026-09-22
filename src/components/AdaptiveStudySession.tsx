@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   ArrowRight,
   BookOpen,
@@ -9,15 +9,63 @@ import {
   Sparkles,
   Bot,
   Layers,
-  ChevronRight
+  ChevronRight,
+  AlertTriangle,
+  Bookmark
 } from 'lucide-react';
 import { useStudent } from '../context/StudentContext';
 import { LearningStyle } from '../types';
+import {
+  getChapters,
+  getLesson,
+  validateSubjectContext
+} from '../services/curriculumService';
 
 export const AdaptiveStudySession: React.FC = () => {
   const { student, activeSubject, setPreferredStyle, setActiveTab } = useStudent();
   const [activeSubtab, setActiveSubtab] = useState<'Explanation' | 'Notes' | 'Examples'>('Explanation');
   const [sessionTab, setSessionTab] = useState<'Learn' | 'Practice' | 'AskAI'>('Learn');
+
+  // Chapters available for the active subject
+  const chapters = getChapters(student.grade, student.board, student.stream, activeSubject);
+  const [selectedChapterId, setSelectedChapterId] = useState<string>(chapters[0]?.id || '');
+  const [selectedTopicId, setSelectedTopicId] = useState<string>(chapters[0]?.topics[0]?.id || '');
+
+  // Reset chapter and topic selection when activeSubject or grade changes
+  useEffect(() => {
+    const updatedChapters = getChapters(student.grade, student.board, student.stream, activeSubject);
+    if (updatedChapters.length > 0) {
+      setSelectedChapterId(updatedChapters[0].id);
+      setSelectedTopicId(updatedChapters[0].topics[0]?.id || '');
+    }
+  }, [activeSubject, student.grade, student.board, student.stream]);
+
+  // When chapter selection changes, update active topic
+  const handleChapterChange = (chId: string) => {
+    setSelectedChapterId(chId);
+    const ch = chapters.find((c) => c.id === chId);
+    if (ch && ch.topics.length > 0) {
+      setSelectedTopicId(ch.topics[0].id);
+    }
+  };
+
+  // Retrieve current active chapter and topic objects
+  const currentChapter = chapters.find((c) => c.id === selectedChapterId) || chapters[0];
+  const currentTopic =
+    currentChapter?.topics.find((t) => t.id === selectedTopicId) || currentChapter?.topics[0];
+
+  // Dynamic lesson content based on active subject, chapter, topic, and style
+  const lessonData = getLesson(
+    student.grade,
+    student.board,
+    student.stream,
+    activeSubject,
+    selectedChapterId,
+    selectedTopicId
+  );
+
+  // Subject-Context Validation Guard
+  const isSubjectValid = validateSubjectContext(lessonData.subject, activeSubject);
 
   const learningStyles: { style: LearningStyle; icon: string; title: string; subtitle: string }[] = [
     { style: 'Simple', icon: '💡', title: 'Simple', subtitle: 'Easy & clear explanations' },
@@ -26,40 +74,7 @@ export const AdaptiveStudySession: React.FC = () => {
     { style: 'Exam-oriented', icon: '📝', title: 'Exam-oriented', subtitle: 'High-yield points & practice' },
   ];
 
-  // Dynamic lesson content based on style
-  const lessonData = {
-    title: activeSubject === 'Science' ? 'Carbon and Its Compounds' : `${activeSubject} Mastery`,
-    chapter: 'Chapter 3 • Functional Groups',
-    progress: 40,
-    content: {
-      Simple: {
-        heading: 'What are Functional Groups?',
-        paragraph: 'Functional groups are specific groups of atoms in organic compounds that determine the chemical properties and reactivity of the compounds.',
-        subtext: 'Even if the hydrocarbon chain is very long or very short, the functional group dictates how the molecule behaves when interacting with other chemicals.',
-        tip: "Think of functional groups as 'special teams' in a molecule! They give it unique properties."
-      },
-      Analogy: {
-        heading: 'The Power Tool Metaphor',
-        paragraph: 'Imagine an interchangeable power drill. The battery and motor handle are always the same (the carbon chain), but attaching a drill bit versus a sanding wheel completely changes what the tool can do.',
-        subtext: 'Similarly, attaching an -OH group turns a benign hydrocarbon into an alcohol, while adding -COOH makes it an acidic vinegar!',
-        tip: "Metaphor: The carbon chain is the vehicle, but the functional group is the driver deciding the direction!"
-      },
-      Visual: {
-        heading: 'Molecular Architecture & Reactive Sites',
-        paragraph: 'Oxygen and Nitrogen atoms contain electronegative lone pairs that create localized dipoles within nonpolar carbon bonds.',
-        subtext: 'Alcohols (-OH) have bent sp³ geometry; Aldehydes (-CHO) and Ketones (>C=O) have planar sp² carbonyl bonds with 120° bond angles.',
-        tip: "Visual Cue: Polar red oxygen centers attract attacking reagents while the grey carbon chain remains inert."
-      },
-      'Exam-oriented': {
-        heading: 'Board Exam High-Yield Suffixes & Reactions',
-        paragraph: 'Guaranteed 4-mark questions in Section C: 1) Identify functional group. 2) Give IUPAC nomenclature. 3) Test for carboxylic acid using Sodium Hydrogen Carbonate.',
-        subtext: 'IUPAC Suffix Rules: Alcohol = -ol | Aldehyde = -al | Ketone = -one | Carboxylic Acid = -oic acid.',
-        tip: "Board Exam Tip: When ethanoic acid reacts with NaHCO₃, brisk effervescence of CO₂ gas confirms carboxylic acid presence."
-      }
-    }
-  };
-
-  const activeContent = lessonData.content[student.preferredStyle] || lessonData.content.Simple;
+  const activeContent = lessonData.styles[student.preferredStyle] || lessonData.styles.Simple;
 
   return (
     <div style={{
@@ -70,7 +85,7 @@ export const AdaptiveStudySession: React.FC = () => {
       flexDirection: 'column',
       gap: '24px'
     }}>
-      {/* Session Top Header matching Screenshot Panel 6 */}
+      {/* Session Top Header */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -79,14 +94,26 @@ export const AdaptiveStudySession: React.FC = () => {
         gap: '16px'
       }}>
         <div>
-          <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#4F46E5', textTransform: 'uppercase' }}>
-            {activeSubject} Adaptive Study
-          </span>
-          <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: '#1E293B', marginTop: '2px' }}>
-            {lessonData.title}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#4F46E5', textTransform: 'uppercase' }}>
+              {activeSubject} Adaptive Study
+            </span>
+            <span style={{
+              fontSize: '0.72rem',
+              fontWeight: 700,
+              color: '#059669',
+              backgroundColor: '#ECFDF5',
+              padding: '2px 8px',
+              borderRadius: '999px'
+            }}>
+              {student.grade} • {student.board} {student.stream !== 'Not applicable' ? `• ${student.stream}` : ''}
+            </span>
+          </div>
+          <h1 style={{ fontSize: '1.8rem', fontWeight: 800, color: '#1E293B', marginTop: '4px' }}>
+            {lessonData.topicTitle}
           </h1>
           <p style={{ color: '#64748B', fontSize: '0.9rem', margin: 0 }}>
-            Let's learn at your pace! GuruMitra dynamically adjusts pedagogical depth.
+            {currentChapter ? currentChapter.title : `${activeSubject} Curriculum`} • Pedagogical depth calibrated to {student.grade}.
           </p>
         </div>
 
@@ -138,6 +165,94 @@ export const AdaptiveStudySession: React.FC = () => {
         </div>
       </div>
 
+      {/* Chapter & Topic Selector Bar */}
+      {chapters.length > 0 && (
+        <div style={{
+          backgroundColor: '#FFFFFF',
+          borderRadius: '16px',
+          padding: '14px 20px',
+          border: '1px solid var(--border-subtle)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <Bookmark size={17} color="#4F46E5" />
+            <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1E293B' }}>
+              Select Chapter:
+            </span>
+            <select
+              value={selectedChapterId}
+              onChange={(e) => handleChapterChange(e.target.value)}
+              style={{
+                padding: '6px 12px',
+                borderRadius: '8px',
+                border: '1px solid #CBD5E1',
+                fontSize: '0.85rem',
+                color: '#1E293B',
+                fontWeight: 600,
+                backgroundColor: '#F8FAFC',
+                outline: 'none'
+              }}
+            >
+              {chapters.map((ch) => (
+                <option key={ch.id} value={ch.id}>
+                  Chapter {ch.number}: {ch.title}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {currentChapter && currentChapter.topics.length > 1 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <span style={{ fontSize: '0.82rem', fontWeight: 600, color: '#64748B' }}>Topic:</span>
+              {currentChapter.topics.map((top) => {
+                const isTopActive = top.id === selectedTopicId;
+                return (
+                  <button
+                    key={top.id}
+                    onClick={() => setSelectedTopicId(top.id)}
+                    style={{
+                      padding: '4px 10px',
+                      borderRadius: '6px',
+                      fontSize: '0.78rem',
+                      border: isTopActive ? '1px solid #4F46E5' : '1px solid #E2E8F0',
+                      backgroundColor: isTopActive ? '#EEF2FF' : '#FFFFFF',
+                      color: isTopActive ? '#4F46E5' : '#475569',
+                      fontWeight: isTopActive ? 700 : 500,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    {top.title}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Subject-Context Validation Alert if mismatch ever occurs */}
+      {!isSubjectValid && (
+        <div style={{
+          padding: '16px',
+          borderRadius: '12px',
+          backgroundColor: '#FEF2F2',
+          border: '1px solid #FCA5A5',
+          color: '#B91C1C',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '12px'
+        }}>
+          <AlertTriangle size={20} />
+          <div>
+            <strong>Subject Mismatch Warning:</strong> Current subject is "{activeSubject}", but lesson context indicated "{lessonData.subject}". Content has been safeguarded.
+          </div>
+        </div>
+      )}
+
       {/* Main Study Grid */}
       <div style={{
         display: 'grid',
@@ -153,7 +268,7 @@ export const AdaptiveStudySession: React.FC = () => {
                   Today's Lesson
                 </span>
                 <h3 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#1E293B' }}>
-                  {lessonData.chapter}
+                  {lessonData.chapterTitle}
                 </h3>
               </div>
               <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#4F46E5' }}>
@@ -193,7 +308,7 @@ export const AdaptiveStudySession: React.FC = () => {
             ))}
           </div>
 
-          {/* Subtab Content rendered dynamically according to student.preferredStyle */}
+          {/* Subtab Content rendered dynamically according to student.preferredStyle & active topic */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '16px', minHeight: '220px' }}>
             {activeSubtab === 'Explanation' && (
               <>
@@ -207,7 +322,7 @@ export const AdaptiveStudySession: React.FC = () => {
                   {activeContent.subtext}
                 </p>
 
-                {/* Illustrated Tip Box matching Screenshot Panel 6! */}
+                {/* Illustrated Tip Box */}
                 <div style={{
                   padding: '16px',
                   borderRadius: '14px',
@@ -222,7 +337,7 @@ export const AdaptiveStudySession: React.FC = () => {
                 }}>
                   <span style={{ fontSize: '1.3rem' }}>💡</span>
                   <div>
-                    <strong>Tip: </strong>
+                    <strong>{student.preferredStyle} Tip: </strong>
                     <span>{activeContent.tip}</span>
                   </div>
                 </div>
@@ -230,23 +345,46 @@ export const AdaptiveStudySession: React.FC = () => {
             )}
 
             {activeSubtab === 'Notes' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
                 <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1E293B' }}>
-                  Quick Revision Notes
+                  Quick Revision Notes • {lessonData.topicTitle}
                 </h4>
-                <ul style={{ paddingLeft: '20px', fontSize: '0.9rem', color: '#334155', lineHeight: '1.7' }}>
-                  <li><strong>Alcohol:</strong> Contains -OH group. Suffix is -ol (e.g. Methanol, Ethanol).</li>
-                  <li><strong>Carboxylic Acid:</strong> Contains -COOH group. Suffix is -oic acid (e.g. Ethanoic acid).</li>
-                  <li><strong>Aldehydes:</strong> Contains terminal -CHO group. Suffix is -al (e.g. Ethanal).</li>
-                  <li><strong>Ketones:</strong> Contains internal &gt;C=O group. Suffix is -one (e.g. Propanone).</li>
-                </ul>
+                {currentTopic?.keyPoints && currentTopic.keyPoints.length > 0 ? (
+                  <ul style={{ paddingLeft: '20px', fontSize: '0.9rem', color: '#334155', lineHeight: '1.8' }}>
+                    {currentTopic.keyPoints.map((point, idx) => (
+                      <li key={idx}>
+                        <strong>Key Concept {idx + 1}:</strong> {point}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p style={{ fontSize: '0.9rem', color: '#64748B' }}>
+                    Fundamental concepts for {lessonData.topicTitle} in {student.grade} {activeSubject}.
+                  </p>
+                )}
+
+                {currentTopic?.formulas && currentTopic.formulas.length > 0 && (
+                  <div style={{
+                    backgroundColor: '#F8FAFC',
+                    padding: '12px 16px',
+                    borderRadius: '10px',
+                    border: '1px solid #E2E8F0'
+                  }}>
+                    <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4F46E5', textTransform: 'uppercase' }}>
+                      Standard Formulas / Equations
+                    </span>
+                    <div style={{ fontFamily: 'monospace', fontSize: '0.88rem', color: '#1E293B', marginTop: '4px' }}>
+                      {currentTopic.formulas.join('  |  ')}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
             {activeSubtab === 'Examples' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <h4 style={{ fontSize: '1.05rem', fontWeight: 800, color: '#1E293B' }}>
-                  Common Chemical Examples
+                  Worked Example • {lessonData.topicTitle}
                 </h4>
                 <div style={{
                   backgroundColor: '#0F172A',
@@ -257,17 +395,32 @@ export const AdaptiveStudySession: React.FC = () => {
                   fontSize: '0.85rem',
                   lineHeight: '1.6'
                 }}>
-                  // Alcohols:<br />
-                  CH₃-OH ──► Methanol<br />
-                  CH₃-CH₂-OH ──► Ethanol (Drinkable/Alcohol)<br /><br />
-                  // Carboxylic Acids:<br />
-                  CH₃-COOH ──► Ethanoic acid (Vinegar 5-8% solution)
+                  // {activeSubject} ({student.grade} - {student.board})<br />
+                  // Topic: {lessonData.topicTitle}<br /><br />
+                  {currentTopic?.formulas && currentTopic.formulas.length > 0 ? (
+                    <>
+                      // Governing Rule:<br />
+                      {currentTopic.formulas[0]}<br /><br />
+                      // Application:<br />
+                      Input parameters are mapped from board syllabus specifications.<br />
+                      Step 1: State the formula clearly.<br />
+                      Step 2: Substitute values with proper SI/standard units.<br />
+                      Step 3: Solve analytically and verify boundary limits.
+                    </>
+                  ) : (
+                    <>
+                      // Core Concept Application:<br />
+                      1. Identify the given premise in the problem.<br />
+                      2. Apply the fundamental rule of {lessonData.topicTitle}.<br />
+                      3. Formulate the conclusion based on {student.board} criteria.
+                    </>
+                  )}
                 </div>
               </div>
             )}
           </div>
 
-          {/* Bottom Action: Next Button matching screenshot */}
+          {/* Bottom Action: Next Button */}
           <div style={{
             display: 'flex',
             justifyContent: 'flex-end',
@@ -286,7 +439,7 @@ export const AdaptiveStudySession: React.FC = () => {
           </div>
         </div>
 
-        {/* Right Column: Learning Style Switcher Cards (Panel 6) */}
+        {/* Right Column: Learning Style Switcher Cards */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
           <div className="card" style={{ padding: '24px' }}>
             <div style={{ marginBottom: '16px' }}>
@@ -294,7 +447,7 @@ export const AdaptiveStudySession: React.FC = () => {
                 Personalize Pedagogical Style
               </h4>
               <p style={{ fontSize: '0.78rem', color: '#64748B', margin: 0 }}>
-                Clicking any style transforms the explanation instantly.
+                Clicking any style transforms the {activeSubject} explanation instantly.
               </p>
             </div>
 
@@ -355,7 +508,7 @@ export const AdaptiveStudySession: React.FC = () => {
               </span>
             </div>
             <p style={{ fontSize: '0.78rem', color: '#6B21A8', margin: 0, lineHeight: '1.4' }}>
-              Pacing is calibrated to <strong>{student.level}</strong>. If quiz score drops below 60%, the engine automatically routes to remedial prerequisites.
+              Pacing calibrated to <strong>{student.level}</strong> difficulty for <strong>{student.grade} ({student.board})</strong>. If quiz score drops below 60%, the engine automatically routes to remedial prerequisites.
             </p>
           </div>
         </div>

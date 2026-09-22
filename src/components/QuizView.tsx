@@ -17,6 +17,7 @@ import {
 import { useStudent } from '../context/StudentContext';
 import { QUIZ_QUESTIONS } from '../data/quizQuestions';
 import { SubjectType, QuizQuestion, QuizResult, DifficultyLevel } from '../types';
+import { getQuizQuestions, getChapters } from '../services/curriculumService';
 
 export const QuizView: React.FC = () => {
   const {
@@ -28,17 +29,38 @@ export const QuizView: React.FC = () => {
     setActiveTab
   } = useStudent();
 
-  const [selectedTopic, setSelectedTopic] = useState<string>('Functional Groups');
+  const questionsToUse = getQuizQuestions(
+    student.grade,
+    student.board,
+    student.stream,
+    activeSubject,
+    student.level
+  );
+
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [userAnswers, setUserAnswers] = useState<{ questionIndex: number; selectedIndex: number; isCorrect: boolean }[]>([]);
   const [isCompleted, setIsCompleted] = useState(false);
   const [quizStartTime] = useState(Date.now());
 
-  // Filter available questions for subject
-  const currentSubjectQuestions = QUIZ_QUESTIONS.filter((q) => q.subject === activeSubject);
-  const questionsToUse = currentSubjectQuestions.length >= 5 ? currentSubjectQuestions : QUIZ_QUESTIONS.slice(0, 10);
-  const currentQ = questionsToUse[currentQIndex] || questionsToUse[0];
+  // Reset quiz states on subject or academic profile change
+  React.useEffect(() => {
+    setCurrentQIndex(0);
+    setSelectedOption(null);
+    setUserAnswers([]);
+    setIsCompleted(false);
+  }, [activeSubject, student.grade, student.board, student.stream]);
+
+  const currentQ = questionsToUse[currentQIndex] || questionsToUse[0] || {
+    id: `fallback-q-${activeSubject.toLowerCase()}`,
+    subject: activeSubject,
+    topic: `${activeSubject} Diagnostic`,
+    difficulty: student.level,
+    question: `What is the core principle of ${student.grade} ${activeSubject}?`,
+    options: ['Standard analytical definition', 'Arbitrary assumption', 'Unrelated guess', 'None of these'],
+    correctIndex: 0,
+    explanation: `Foundational syllabus definition for ${student.grade} ${activeSubject}.`
+  };
 
   const handleSelectOption = (index: number) => {
     if (selectedOption !== null) return; // Prevent changing after selection
@@ -122,18 +144,17 @@ export const QuizView: React.FC = () => {
       score: 6,
       totalQuestions: 10,
       accuracy: 58,
-      subject: 'Mathematics',
-      topic: 'Geometry',
+      subject: activeSubject,
+      topic: `${activeSubject} Diagnostic`,
       difficulty: 'Intermediate',
-      strongTopics: ['Algebra', 'Coordinate Calculations'],
-      weakTopics: ['Geometry', 'Triangles & Theorems'],
+      strongTopics: [`${activeSubject} Foundations`],
+      weakTopics: [`${activeSubject} Problem Sets`],
       adaptationMessage: "Let's strengthen the basics before moving ahead.",
       newDifficulty: 'Beginner',
-      recommendedTopic: 'Geometry Basics',
+      recommendedTopic: `${activeSubject} Fundamentals`,
       userAnswers: simulatedAnswers
     };
 
-    setActiveSubject('Mathematics');
     recordQuizResult(result);
     setIsCompleted(true);
   };
@@ -292,12 +313,12 @@ export const QuizView: React.FC = () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#10B981' }} />
                     <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1E293B' }}>
-                      Covalent Bonding & Concepts
+                      {getChapters(student.grade, student.board, student.stream, subject)[0]?.topics[0]?.title || `${subject} Foundations`}
                     </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1E293B' }}>
-                      90%
+                      85%
                     </span>
                     <span className="badge badge-on-track">
                       On Track
@@ -317,12 +338,12 @@ export const QuizView: React.FC = () => {
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#F59E0B' }} />
                     <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#1E293B' }}>
-                      Chemical Reactions
+                      {getChapters(student.grade, student.board, student.stream, subject)[0]?.topics[1]?.title || `${subject} Application`}
                     </span>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <span style={{ fontSize: '0.85rem', fontWeight: 800, color: '#1E293B' }}>
-                      60%
+                      65%
                     </span>
                     <span className="badge badge-practice">
                       Practice

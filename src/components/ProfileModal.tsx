@@ -12,29 +12,54 @@ import {
   Shield,
   LogOut,
   Clock,
-  Check
+  Check,
+  GraduationCap
 } from 'lucide-react';
 import { useStudent } from '../context/StudentContext';
 import { useAuth } from '../context/AuthContext';
-import { LearningStyle } from '../types';
+import { LearningStyle, ClassLevel, BoardType, StreamType, DifficultyLevel } from '../types';
+import { getAvailableSubjects, normalizeGrade } from '../services/curriculumService';
 
 export const ProfileModal: React.FC = () => {
-  const { student, updateProfile, setActiveTab } = useStudent();
+  const { student, updateProfile, setAcademicProfile, setActiveTab } = useStudent();
   const { user, logout } = useAuth();
   const [activeSubView, setActiveSubView] = useState<'profile' | 'account'>('profile');
 
   // Form states initialized with current student
   const [name, setName] = useState(student.name);
-  const [grade, setGrade] = useState(student.grade);
+  const [grade, setGrade] = useState<ClassLevel>(normalizeGrade(student.grade));
+  const [board, setBoard] = useState<BoardType>(student.board || 'CBSE');
+  const [stream, setStream] = useState<StreamType>(student.stream || 'Not applicable');
+  const [level, setLevel] = useState<DifficultyLevel>(student.level || 'Beginner');
   const [style, setStyle] = useState<LearningStyle>(student.preferredStyle);
   const [savedSuccess, setSavedSuccess] = useState(false);
 
   // Sync state if student changes
   useEffect(() => {
     setName(student.name);
-    setGrade(student.grade);
+    const norm = normalizeGrade(student.grade);
+    setGrade(norm);
+    setBoard(student.board || 'CBSE');
+    setStream(student.stream || 'Not applicable');
+    setLevel(student.level || 'Beginner');
     setStyle(student.preferredStyle);
   }, [student]);
+
+  // Handle Class changes: disable or reset stream for Class 6-10
+  const handleGradeChange = (newGrade: ClassLevel) => {
+    setGrade(newGrade);
+    const isSenior = newGrade === 'Class 11' || newGrade === 'Class 12';
+    if (!isSenior) {
+      setStream('Not applicable');
+    } else if (stream === 'Not applicable') {
+      setStream('Science');
+    }
+  };
+
+  const isSeniorClass = grade === 'Class 11' || grade === 'Class 12';
+
+  // Dynamic preview of subjects that will be enrolled
+  const previewSubjects = getAvailableSubjects(grade, board, stream);
 
   const initials = student.name
     .trim()
@@ -45,9 +70,10 @@ export const ProfileModal: React.FC = () => {
     .slice(0, 2) || 'ST';
 
   const handleSave = () => {
-    updateProfile(name, grade, style);
+    setAcademicProfile(grade, board, stream, style, level);
+    updateProfile(name, grade, style, board, stream);
     setSavedSuccess(true);
-    setTimeout(() => setSavedSuccess(false), 2500);
+    setTimeout(() => setSavedSuccess(false), 3000);
   };
 
   return (
@@ -72,7 +98,7 @@ export const ProfileModal: React.FC = () => {
           style={{ padding: '8px 18px', fontSize: '0.85rem' }}
         >
           <User size={16} />
-          <span>Student Profile Setup</span>
+          <span>Student Academic Profile</span>
         </button>
         <button
           onClick={() => setActiveSubView('account')}
@@ -85,21 +111,22 @@ export const ProfileModal: React.FC = () => {
       </div>
 
       {activeSubView === 'profile' ? (
-        /* PANEL 2: Student Profile Setup */
+        /* PANEL: Student Profile Setup */
         <div className="card" style={{ padding: '36px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
           <div>
-            <span style={{ fontSize: '0.78rem', fontWeight: 700, color: '#4F46E5', textTransform: 'uppercase' }}>
-              Personalization Engine
-            </span>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', fontSize: '0.78rem', fontWeight: 700, color: '#4F46E5', textTransform: 'uppercase' }}>
+              <GraduationCap size={16} />
+              <span>Academic Personalization Engine</span>
+            </div>
             <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#1E293B', marginTop: '2px' }}>
-              Complete Your Profile
+              Student Academic Profile
             </h2>
             <p style={{ color: '#64748B', fontSize: '0.9rem', margin: 0 }}>
-              Help us personalize your learning experience and pedagogy.
+              Calibrate your class, board, stream, and learning style. The entire GuruMitra AI curriculum dynamically adapts to your configuration.
             </p>
           </div>
 
-          {/* Avatar with Camera badge */}
+          {/* Avatar with Initials */}
           <div style={{ display: 'flex', justifyContent: 'center' }}>
             <div style={{ position: 'relative' }}>
               <div style={{
@@ -137,95 +164,202 @@ export const ProfileModal: React.FC = () => {
             </div>
           </div>
 
-          {/* Input fields */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#1E293B', marginBottom: '8px' }}>
-                Full Name
-              </label>
-              <input
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px 16px',
-                  borderRadius: '12px',
-                  border: '1.5px solid var(--border-subtle)',
-                  fontSize: '0.92rem',
-                  fontFamily: 'var(--font-family)',
-                  outline: 'none'
-                }}
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#1E293B', marginBottom: '8px' }}>
-                Class / Grade
-              </label>
-              <select
-                value={grade}
-                onChange={(e) => setGrade(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '12px 16px',
-                  borderRadius: '12px',
-                  border: '1.5px solid var(--border-subtle)',
-                  fontSize: '0.92rem',
-                  fontFamily: 'var(--font-family)',
-                  outline: 'none',
-                  backgroundColor: '#FFFFFF'
-                }}
-              >
-                <option value="9th">9th Standard</option>
-                <option value="10th">10th Standard</option>
-                <option value="11th">11th Standard</option>
-                <option value="12th">12th Standard</option>
-              </select>
-            </div>
-          </div>
-
-          {/* Subjects Pills matching Panel 2 */}
+          {/* Student Name */}
           <div>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#1E293B', marginBottom: '8px' }}>
-              Enrolled Subjects
+              Student Name
             </label>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {['Mathematics', 'Science', 'English', 'Computer Science', 'Social Science'].map((sub) => (
-                <span
-                  key={sub}
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '12px 16px',
+                borderRadius: '12px',
+                border: '1.5px solid var(--border-subtle)',
+                fontSize: '0.92rem',
+                fontFamily: 'var(--font-family)',
+                outline: 'none'
+              }}
+            />
+          </div>
+
+          {/* ACADEMIC PROFILE SECTION */}
+          <div style={{
+            backgroundColor: '#F8FAFC',
+            border: '1.5px solid #E2E8F0',
+            borderRadius: '16px',
+            padding: '24px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '18px'
+          }}>
+            <h3 style={{ fontSize: '1rem', fontWeight: 800, color: '#1E293B', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <GraduationCap size={18} color="#4F46E5" />
+              <span>Academic Calibration</span>
+            </h3>
+
+            {/* 4 Academic Selectors */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '16px' }}>
+              {/* CLASS DROPDOWN */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  CLASS
+                </label>
+                <select
+                  value={grade}
+                  onChange={(e) => handleGradeChange(e.target.value as ClassLevel)}
                   style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: '6px',
-                    padding: '8px 14px',
-                    borderRadius: '999px',
-                    backgroundColor: '#EEF2FF',
-                    color: '#4F46E5',
-                    fontSize: '0.82rem',
-                    fontWeight: 700,
-                    border: '1px solid #C7D2FE'
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    border: '1.5px solid #CBD5E1',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                    backgroundColor: '#FFFFFF',
+                    color: '#1E293B',
+                    outline: 'none'
                   }}
                 >
-                  <span>{sub}</span>
-                  <span style={{ cursor: 'pointer', fontSize: '0.85rem' }}>✕</span>
+                  <option value="Class 6">Class 6</option>
+                  <option value="Class 7">Class 7</option>
+                  <option value="Class 8">Class 8</option>
+                  <option value="Class 9">Class 9</option>
+                  <option value="Class 10">Class 10</option>
+                  <option value="Class 11">Class 11</option>
+                  <option value="Class 12">Class 12</option>
+                </select>
+              </div>
+
+              {/* BOARD DROPDOWN */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  BOARD
+                </label>
+                <select
+                  value={board}
+                  onChange={(e) => setBoard(e.target.value as BoardType)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    border: '1.5px solid #CBD5E1',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                    backgroundColor: '#FFFFFF',
+                    color: '#1E293B',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="CBSE">CBSE</option>
+                  <option value="ICSE">ICSE</option>
+                  <option value="UP Board">UP Board</option>
+                </select>
+              </div>
+
+              {/* STREAM DROPDOWN (Disabled for 6-10, Enabled for 11-12) */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  STREAM
+                </label>
+                <select
+                  value={stream}
+                  disabled={!isSeniorClass}
+                  onChange={(e) => setStream(e.target.value as StreamType)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    border: '1.5px solid #CBD5E1',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                    backgroundColor: isSeniorClass ? '#FFFFFF' : '#F1F5F9',
+                    color: isSeniorClass ? '#1E293B' : '#94A3B8',
+                    cursor: isSeniorClass ? 'default' : 'not-allowed',
+                    outline: 'none'
+                  }}
+                >
+                  {!isSeniorClass ? (
+                    <option value="Not applicable">Not applicable</option>
+                  ) : (
+                    <>
+                      <option value="Science">Science</option>
+                      <option value="Commerce">Commerce</option>
+                      <option value="Humanities / Arts">Humanities / Arts</option>
+                    </>
+                  )}
+                </select>
+              </div>
+
+              {/* DIFFICULTY LEVEL */}
+              <div>
+                <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 700, color: '#334155', marginBottom: '6px' }}>
+                  DIFFICULTY
+                </label>
+                <select
+                  value={level}
+                  onChange={(e) => setLevel(e.target.value as DifficultyLevel)}
+                  style={{
+                    width: '100%',
+                    padding: '10px 14px',
+                    borderRadius: '10px',
+                    border: '1.5px solid #CBD5E1',
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                    backgroundColor: '#FFFFFF',
+                    color: '#1E293B',
+                    outline: 'none'
+                  }}
+                >
+                  <option value="Beginner">Beginner</option>
+                  <option value="Intermediate">Intermediate</option>
+                  <option value="Advanced">Advanced</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Dynamically Calibrated Subjects Preview */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#64748B' }}>
+                  Enrolled Subjects ({grade} • {board} {stream !== 'Not applicable' ? `• ${stream}` : ''})
                 </span>
-              ))}
-              <button
-                className="btn btn-outline"
-                style={{ padding: '6px 14px', borderRadius: '999px', fontSize: '0.8rem' }}
-              >
-                + Add Subject
-              </button>
+                <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#4F46E5' }}>
+                  {previewSubjects.length} Subjects Calibrated
+                </span>
+              </div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {previewSubjects.map((sub) => (
+                  <span
+                    key={sub.name}
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      padding: '6px 12px',
+                      borderRadius: '999px',
+                      backgroundColor: sub.bgLight,
+                      color: sub.color,
+                      fontSize: '0.82rem',
+                      fontWeight: 700,
+                      border: `1px solid ${sub.color}30`
+                    }}
+                  >
+                    <span>{sub.icon}</span>
+                    <span>{sub.name}</span>
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
 
-          {/* Preferred Learning Style 4 Cards matching Screenshot Panel 2 */}
+          {/* Preferred Learning Style 4 Cards */}
           <div>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, color: '#1E293B', marginBottom: '12px' }}>
               Preferred Learning Style
             </label>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '12px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
               {[
                 { id: 'Simple', icon: '💡', title: 'Simple', desc: 'Easy & clear explanations' },
                 { id: 'Analogy', icon: '🧩', title: 'Analogy', desc: 'Real-life examples & comparisons' },
@@ -263,15 +397,15 @@ export const ProfileModal: React.FC = () => {
           </div>
 
           {/* Save Button */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '12px', borderTop: '1px solid #F1F5F9' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', paddingTop: '16px', borderTop: '1px solid #F1F5F9' }}>
             {savedSuccess ? (
               <span style={{ color: '#10B981', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <CheckCircle2 size={16} />
-                Profile changes saved!
+                Academic profile saved! Curriculum re-calibrated.
               </span>
             ) : (
               <span style={{ color: '#94A3B8', fontSize: '0.8rem' }}>
-                Preferences will instantly apply to AI Tutor and study lessons
+                Preferences will instantly apply across all subjects, AI Tutor, and study lessons
               </span>
             )}
 
@@ -281,7 +415,7 @@ export const ProfileModal: React.FC = () => {
               style={{ padding: '12px 28px' }}
             >
               <Save size={16} />
-              <span>Save & Continue</span>
+              <span>Save Academic Profile</span>
             </button>
           </div>
         </div>
@@ -333,22 +467,9 @@ export const ProfileModal: React.FC = () => {
                   <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: '#1E293B', margin: 0 }}>
                     {student.name}
                   </h3>
-                  {user?.isDemo && (
-                    <span style={{
-                      fontSize: '0.68rem',
-                      fontWeight: 800,
-                      backgroundColor: '#FEF3C7',
-                      color: '#B45309',
-                      padding: '2px 8px',
-                      borderRadius: '999px',
-                      border: '1px solid #FDE68A'
-                    }}>
-                      DEMO ACCOUNT
-                    </span>
-                  )}
                 </div>
                 <div style={{ fontSize: '0.86rem', color: '#64748B', marginTop: '2px' }}>
-                  {user?.email || 'demo@student.com'}
+                  {user?.email || ''}
                 </div>
               </div>
             </div>
@@ -367,7 +488,7 @@ export const ProfileModal: React.FC = () => {
                 fontWeight: 700
               }}>
                 <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: '#22C55E' }} />
-                <span>Session Active</span>
+                <span>Supabase Session Active</span>
               </div>
             </div>
           </div>
@@ -389,9 +510,9 @@ export const ProfileModal: React.FC = () => {
             </div>
 
             <div style={{ padding: '16px', borderRadius: '12px', border: '1px solid var(--border-subtle)', backgroundColor: '#FFFFFF' }}>
-              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>Storage Architecture</div>
+              <div style={{ fontSize: '0.75rem', fontWeight: 600, color: '#64748B' }}>Auth Engine</div>
               <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#1E293B', marginTop: '4px' }}>
-                LocalStorage Session
+                Supabase Auth
               </div>
             </div>
           </div>
