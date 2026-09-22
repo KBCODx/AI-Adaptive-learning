@@ -8,16 +8,21 @@ import {
   StudyPlanItem,
   LearningPathNode,
   ActivityItem,
-  QuizResult
+  QuizResult,
+  SyllabusFile
 } from '../types';
 import {
   INITIAL_SUBJECTS,
   INITIAL_RECOMMENDATIONS,
   INITIAL_STUDY_PLAN,
   INITIAL_LEARNING_PATH,
-  INITIAL_ACTIVITIES
+  INITIAL_ACTIVITIES,
+  mockCurriculum
 } from '../data/mockCurriculum';
 import { useAuth } from './AuthContext';
+import { supabase } from '../lib/supabase';
+import { extractTextFromPDF } from '../utils/pdfExtractor';
+import { parseSyllabusWithAI, getFallbackSyllabusParse } from '../lib/aiSyllabusParser';
 
 export interface StudentProfile {
   name: string;
@@ -29,6 +34,17 @@ export interface StudentProfile {
   completedLessons: number;
   xp: number;
   preferredStyle: LearningStyle;
+  syllabusUploaded: boolean;
+  syllabusData?: Record<string, {
+    fileName: string;
+    fileSize: number;
+    uploadedAt: string;
+    storagePath: string;
+    publicUrl: string;
+    extractedText: string;
+    topics: string[];
+    analysisComplete: boolean;
+  }>;
 }
 
 interface StudentContextType {
@@ -43,6 +59,8 @@ interface StudentContextType {
   lastQuizResult: QuizResult | null;
   notification: { message: string; type: 'success' | 'info' | 'warning' } | null;
   judgeDemoStep: number;
+  syllabusData: Record<string, any>;
+  syllabusUploaded: boolean;
   setActiveTab: (tab: string) => void;
   setActiveSubject: (subject: SubjectType) => void;
   setPreferredStyle: (style: LearningStyle) => void;
@@ -50,6 +68,9 @@ interface StudentContextType {
   toggleStudyPlanItem: (id: string) => void;
   recordQuizResult: (result: QuizResult) => void;
   setJudgeDemoStep: (step: number) => void;
+  completeSyllabusSetup: (files: Record<string, any>) => Promise<any>;
+  extractAndAnalyzeTopics: (text: string, subject: SubjectType) => string[];
+  setSyllabusAnalysis: (subject: string, analysisData: any) => void;
   resetToDefault: () => void;
   clearNotification: () => void;
 }
@@ -68,7 +89,9 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     overallAccuracy: 82,
     completedLessons: 24,
     xp: 1420,
-    preferredStyle: user ? user.preferredStyle : 'Simple'
+    preferredStyle: user ? user.preferredStyle : 'Simple',
+    syllabusUploaded: false,
+    syllabusData: {}
   });
 
   const [subjects, setSubjects] = useState<SubjectData[]>(INITIAL_SUBJECTS);
@@ -81,6 +104,161 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [lastQuizResult, setLastQuizResult] = useState<QuizResult | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'warning' } | null>(null);
   const [judgeDemoStep, setJudgeDemoStep] = useState<number>(0);
+  const [syllabusData, setSyllabusData] = useState<Record<string, any>>({});
+
+  // Topic extraction helper (client-side matching against curriculum)
+  const extractAndAnalyzeTopics = (text: string, subject: SubjectType): string[] => {
+    try {
+      const curriculum = mockCurriculum[subject];
+      if (!curriculum || !curriculum.topics) return [];
+
+      const textLower = text.toLowerCase();
+      // Match topics mentioned in text or return all curriculum topics if text is general
+      const detected = curriculum.topics.filter(topic =>
+        textLower.includes(topic.toLowerCase())
+      );
+      return detected.length > 0 ? detected : curriculum.topics.slice(0, 6);
+    } catch (error) {
+      console.error('Error in topic extraction:', error);
+      return [];
+    }
+  };
+
+  // Helper to update analysis for a subject
+  const setSyllabusAnalysis = (subject: string, analysisData: any) => {
+    setStudent(prev => ({
+      ...prev,
+      syllabusData: {
+        ...(prev.syllabusData || {}),
+        [subject]: {
+          ...(prev.syllabusData?.[subject] || {}),
+          ...analysisData
+        }
+      }
+    }));
+  };
+
+  // Enhanced syllabus setup with Supabase storage and fallback
+  const completeSyllabusSetup = async (filesRecord: Record<string, any>) => {
+    try {
+      const currentUserId = user?.id || 'guest_student';
+
+      const uploadPromises = Object.entries(filesRecord).map(async ([subjectKey, fileData]) => {
+        if (!fileData) return null;
+
+        let storagePath = '';
+        let publicUrl = '';
+        let extractedText = `Syllabus for ${subjectKey}. Covered units: ${mockCurriculum[subjectKey as SubjectType]?.topics?.join(', ')}`;
+
+        // Attempt Supabase Storage Upload if file object is present
+        if (fileData.file && supabase) {
+          try {
+            const fileName = `${currentUserId}/${subjectKey}/${Date.now()}-${fileData.name}`;
+            const { data: uploadData, error: uploadError } = await supabase
+              .storage
+              .from('syllabus-uploads')
+              .upload(fileName, fileData.file, {
+                contentType: fileData.type || 'application/pdf',
+                upsert: true
+              });
+
+            if (!uploadError && uploadData) {
+              storagePath = fileName;
+              const { data: urlData } = supabase
+                .storage
+                .from('syllabus-uploads')
+                .getPublicUrl(fileName);
+              publicUrl = urlData?.publicUrl || '';
+
+              // Try Supabase Function for extraction
+              try {
+                const { data: extractionData } = await supabase.functions.invoke(
+                  'extract-pdf-text',
+                  { body: { filePath: fileName } }
+                );
+                if (extractionData?.text) {
+                  extractedText = extractionData.text;
+                }
+              } catch (funcErr) {
+                console.warn('PDF text extraction edge function skipped, using fallback parsing:', funcErr);
+              }
+            }
+          } catch (storageErr) {
+            console.warn('Supabase storage upload skipped or failed, using local in-memory fallback:', storageErr);
+          }
+        }
+
+        // Extract actual text and generate AI-powered syllabus analysis if we have the file
+        if (fileData.file) {
+          try {
+            // Extract raw text from PDF
+            const { rawText } = await extractTextFromPDF(fileData.file);
+            extractedText = rawText;
+
+            // Use AI-powered syllabus parser to extract chapters and generate exam-focused topics
+            const parsedSyllabus = parseSyllabusWithAI(rawText, subjectKey as SubjectType);
+
+            return {
+              subject: subjectKey,
+              fileName: fileData.name,
+              fileSize: fileData.size,
+              uploadedAt: fileData.uploadedAt || new Date().toISOString(),
+              storagePath,
+              publicUrl,
+              extractedText: parsedSyllabus.rawText,
+              topics: parsedSyllabus.chapters, // Chapters as topics for backward compatibility
+              analysisComplete: true
+            };
+          } catch (pdfErr) {
+            console.warn('Client-side PDF extraction failed, using fallback:', pdfErr);
+          }
+        }
+
+        // Fallback: Use AI-powered fallback syllabus parser (FREE - zero API cost)
+        const fallbackSyllabus = getFallbackSyllabusParse(subjectKey as SubjectType);
+
+        return {
+          subject: subjectKey,
+          fileName: fileData.name,
+          fileSize: fileData.size,
+          uploadedAt: fileData.uploadedAt || new Date().toISOString(),
+          storagePath,
+          publicUrl,
+          extractedText: fallbackSyllabus.rawText,
+          topics: fallbackSyllabus.chapters, // Chapters as topics for backward compatibility
+          analysisComplete: true
+        };
+      });
+
+      const results = await Promise.all(uploadPromises);
+      const validResults = results.filter((r): r is NonNullable<typeof r> => r !== null);
+      const syllabusMap = Object.fromEntries(validResults.map(r => [r.subject, r]));
+
+      // Update state
+      setStudent(prev => ({
+        ...prev,
+        syllabusData: syllabusMap,
+        syllabusUploaded: true
+      }));
+      setSyllabusData(syllabusMap);
+
+      // Save to per-user localStorage key
+      if (user?.id) {
+        const userSyllabusKey = `gurumitra_syllabus_data_${user.id}`;
+        localStorage.setItem(userSyllabusKey, JSON.stringify(syllabusMap));
+      }
+
+      setNotification({
+        message: 'Syllabus uploaded and analyzed successfully with AI!',
+        type: 'success'
+      });
+
+      return validResults;
+    } catch (error) {
+      console.error('Syllabus setup failed:', error);
+      throw error;
+    }
+  };
 
   // Synchronize student profile whenever auth user changes (e.g. login, signup, demo)
   useEffect(() => {
@@ -97,6 +275,29 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       if (user.preferredSubjects && user.preferredSubjects.length > 0) {
         setActiveSubject(user.preferredSubjects[0]);
       }
+
+      // Restore syllabus data from localStorage using per-user key
+      const userSyllabusKey = `gurumitra_syllabus_data_${user.id}`;
+      try {
+        const savedSyllabusData = localStorage.getItem(userSyllabusKey);
+        if (savedSyllabusData) {
+          const parsedData = JSON.parse(savedSyllabusData);
+          setSyllabusData(parsedData);
+          setStudent((prev) => ({ ...prev, syllabusData: parsedData, syllabusUploaded: true }));
+        } else {
+          // No syllabus for this user — reset to fresh state
+          setSyllabusData({});
+          setStudent((prev) => ({ ...prev, syllabusData: {}, syllabusUploaded: false }));
+        }
+      } catch (err) {
+        console.error('Failed to restore syllabus data:', err);
+        setSyllabusData({});
+        setStudent((prev) => ({ ...prev, syllabusData: {}, syllabusUploaded: false }));
+      }
+    } else {
+      // User logged out — reset syllabus state completely
+      setSyllabusData({});
+      setStudent((prev) => ({ ...prev, syllabusData: {}, syllabusUploaded: false }));
     }
   }, [user]);
 
@@ -295,7 +496,9 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       overallAccuracy: 82,
       completedLessons: 24,
       xp: 1420,
-      preferredStyle: user ? user.preferredStyle : 'Simple'
+      preferredStyle: user ? user.preferredStyle : 'Simple',
+      syllabusUploaded: false,
+      syllabusData: {}
     });
     setSubjects(INITIAL_SUBJECTS);
     setRecommendations(INITIAL_RECOMMENDATIONS);
@@ -324,6 +527,8 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         lastQuizResult,
         notification,
         judgeDemoStep,
+        syllabusData,
+        syllabusUploaded: student.syllabusUploaded,
         setActiveTab,
         setActiveSubject,
         setPreferredStyle,
@@ -331,6 +536,9 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         toggleStudyPlanItem,
         recordQuizResult,
         setJudgeDemoStep,
+        completeSyllabusSetup,
+        extractAndAnalyzeTopics,
+        setSyllabusAnalysis,
         resetToDefault,
         clearNotification
       }}

@@ -18,6 +18,7 @@ export interface SubjectData {
   color: string;
   bgLight: string;
   description: string;
+  topics: string[];
 }
 
 export interface RecommendationItem {
@@ -119,7 +120,19 @@ export interface AuthUser {
   preferredSubjects: SubjectType[];
   preferredStyle: LearningStyle;
   isDemo?: boolean;
+  emailVerified?: boolean;
   createdAt: string;
+  syllabusData?: Record<string, {
+    fileName: string;
+    fileSize: number;
+    uploadedAt: string;
+    storagePath: string;
+    publicUrl: string;
+    extractedText: string;
+    topics: string[]; // Detected topics from PDF
+    examFocusedTopics?: Record<string, string[]>; // Chapter -> exam-focused topics (4-5 per chapter)
+    analysisComplete: boolean;
+  }>
 }
 
 export interface LoginCredentials {
@@ -138,3 +151,10 @@ export interface SignUpData {
   preferredSubjects: SubjectType[];
 }
 
+export interface SyllabusFile {
+  subjectName: SubjectType;
+  fileName: string;
+  fileSize: number;
+  fileType: string;
+  uploadedAt: string;
+}
