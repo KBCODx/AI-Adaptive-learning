@@ -150,23 +150,23 @@ export const INITIAL_SUBJECTS: SubjectData[] = [
 
 export const mockCurriculum: Record<SubjectType, { topics: string[]; description: string }> = {
   'Mathematics': {
-    topics: INITIAL_SUBJECTS[0].topics,
+    topics: INITIAL_SUBJECTS[0].topics || [],
     description: INITIAL_SUBJECTS[0].description
   },
   'Science': {
-    topics: INITIAL_SUBJECTS[1].topics,
+    topics: INITIAL_SUBJECTS[1].topics || [],
     description: INITIAL_SUBJECTS[1].description
   },
   'English': {
-    topics: INITIAL_SUBJECTS[2].topics,
+    topics: INITIAL_SUBJECTS[2].topics || [],
     description: INITIAL_SUBJECTS[2].description
   },
   'Computer Science': {
-    topics: INITIAL_SUBJECTS[3].topics,
+    topics: INITIAL_SUBJECTS[3].topics || [],
     description: INITIAL_SUBJECTS[3].description
   },
   'Social Science': {
-    topics: INITIAL_SUBJECTS[4].topics,
+    topics: INITIAL_SUBJECTS[4].topics || [],
     description: INITIAL_SUBJECTS[4].description
   }
 };

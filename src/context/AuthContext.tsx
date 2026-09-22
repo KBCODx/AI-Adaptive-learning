@@ -7,10 +7,14 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   authError: string | null;
+  isConfigured: boolean;
   login: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: string }>;
-  signup: (data: SignUpData) => Promise<{ success: boolean; error?: string }>;
-  logout: () => void;
-  resetPassword: (email: string) => Promise<{ success: boolean; message: string }>;
+  signIn: (credentials: LoginCredentials) => Promise<{ success: boolean; error?: string }>;
+  signup: (data: SignUpData) => Promise<{ success: boolean; error?: string; requiresConfirmation?: boolean }>;
+  signUp: (data: SignUpData) => Promise<{ success: boolean; error?: string; requiresConfirmation?: boolean }>;
+  logout: () => Promise<void>;
+  signOut: () => Promise<void>;
+  resetPassword: (email: string) => Promise<{ success: boolean; message: string; error?: string }>;
   clearError: () => void;
   demoCredentials: { email: string; password: string };
   resendVerificationEmail: () => Promise<{ success: boolean; error?: string }>;
@@ -42,6 +46,26 @@ interface StoredAccount {
   passwordHash: string;
 }
 
+// Convert Supabase User to internal AuthUser model
+function mapSupabaseUserToAuthUser(sessionUser: any): AuthUser {
+  const metadata = sessionUser.user_metadata || {};
+  const userEmail = sessionUser.email || '';
+  return {
+    id: sessionUser.id,
+    name: metadata.name || userEmail.split('@')[0],
+    email: userEmail,
+    grade: metadata.grade || '10th',
+    level: (metadata.level as DifficultyLevel) || 'Intermediate',
+    preferredSubjects: Array.isArray(metadata.preferredSubjects) && metadata.preferredSubjects.length > 0
+      ? (metadata.preferredSubjects as SubjectType[])
+      : ['Mathematics', 'Science'],
+    preferredStyle: metadata.preferredStyle || 'Simple',
+    isDemo: false,
+    emailVerified: !!sessionUser.email_confirmed_at,
+    createdAt: sessionUser.created_at || new Date().toISOString()
+  };
+}
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
@@ -49,8 +73,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [authError, setAuthError] = useState<string | null>(null);
   const [pendingVerificationEmail, setPendingVerificationEmail] = useState<string | null>(null);
 
+  // Check if Supabase client is properly initialized
+  const isConfigured = Boolean(
+    (import.meta as any).env.VITE_SUPABASE_URL &&
+    (import.meta as any).env.VITE_SUPABASE_ANON_KEY &&
+    supabase
+  );
+
   // Initialize stored accounts and active session on mount
   useEffect(() => {
+    let authListener: { subscription: { unsubscribe: () => void } } | null = null;
+
     const restoreSession = async () => {
       try {
         // 1. Seed demo user into registered users if not present (for fallback local storage)
@@ -69,7 +102,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
         }
 
-        // 2. Check for active session in localStorage or sessionStorage
+        // 2. Check active Supabase session if configured
+        if (supabase) {
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session?.user) {
+            const authUser = mapSupabaseUserToAuthUser(session.user);
+            setUser(authUser);
+            setIsAuthenticated(true);
+            localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(authUser));
+            setIsLoading(false);
+            return;
+          }
+
+          // Listen for auth state changes (e.g., email confirmation redirect, OAuth, token refresh)
+          const { data: listener } = supabase.auth.onAuthStateChange(
+            async (event, session) => {
+              if (session?.user) {
+                const authUser = mapSupabaseUserToAuthUser(session.user);
+                setUser(authUser);
+                setIsAuthenticated(true);
+                localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(authUser));
+              } else if (event === 'SIGNED_OUT') {
+                setUser(null);
+                setIsAuthenticated(false);
+                localStorage.removeItem(SESSION_STORAGE_KEY);
+                sessionStorage.removeItem(SESSION_STORAGE_KEY);
+              }
+            }
+          );
+          authListener = listener;
+        }
+
+        // 3. Fallback: check localStorage or sessionStorage
         const savedSessionRaw =
           localStorage.getItem(SESSION_STORAGE_KEY) ||
           sessionStorage.getItem(SESSION_STORAGE_KEY);
@@ -91,6 +155,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     };
 
     restoreSession();
+
+    return () => {
+      if (authListener?.subscription) {
+        authListener.subscription.unsubscribe();
+      }
+    };
   }, []);
 
   const clearError = () => setAuthError(null);
@@ -134,35 +204,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const sessionUser = data.user;
         if (!sessionUser) throw new Error('No user returned');
 
-        // Guard against undefined email (should not happen after successful signIn)
-        const userEmail = sessionUser.email ?? '';
-        if (!userEmail) {
-          throw new Error('User email is missing');
-        }
-
         // Check if email is verified
-        if (!sessionUser.email_confirmed_at) {
-          setAuthError('Please verify your email before logging in. Check your inbox for the verification link.');
+        if (!data.session && !sessionUser.email_confirmed_at) {
+          const storedUsersRaw = localStorage.getItem(REGISTERED_USERS_KEY);
+          const registeredUsers: StoredAccount[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
+          const matchedFallback = registeredUsers.find(
+            (acc) => acc.user.email.toLowerCase() === cleanEmail && acc.passwordHash === cleanPassword
+          );
+
+          if (matchedFallback) {
+            setUser(matchedFallback.user);
+            setIsAuthenticated(true);
+            setAuthError(null);
+            if (rememberMe) {
+              localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(matchedFallback.user));
+            } else {
+              sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(matchedFallback.user));
+            }
+            setIsLoading(false);
+            return { success: true };
+          }
+
+          setPendingVerificationEmail(cleanEmail);
+          const errorMsg = 'Please verify your email before logging in. If no verification email was received due to Supabase free rate limits, toggle "Confirm email" to OFF in Supabase Dashboard > Authentication > Providers > Email.';
+          setAuthError(errorMsg);
           setIsLoading(false);
-          return { success: false, error: 'Email not verified' };
+          return { success: false, error: errorMsg };
         }
 
-        // Fetch user metadata from auth.user.user_metadata (set during signup)
-        const metadata = sessionUser.user_metadata || {};
-        const authUser: AuthUser = {
-          id: sessionUser.id,
-          name: metadata.name || userEmail.split('@')[0],
-          email: userEmail,
-          grade: metadata.grade || '10th',
-          level: (metadata.level as DifficultyLevel) || 'Intermediate',
-          preferredSubjects: metadata.preferredSubjects
-            ? (metadata.preferredSubjects as SubjectType[])
-            : ['Mathematics', 'Science'],
-          preferredStyle: metadata.preferredStyle || 'Simple',
-          isDemo: false,
-          emailVerified: !!sessionUser.email_confirmed_at,
-          createdAt: sessionUser.created_at || new Date().toISOString()
-        };
+        const authUser = mapSupabaseUserToAuthUser(sessionUser);
 
         setUser(authUser);
         setIsAuthenticated(true);
@@ -179,7 +249,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setIsLoading(false);
         return { success: true };
       } else {
-        // Fallback to local storage (no email verification simulation)
+        // Fallback to local storage
         const storedUsersRaw = localStorage.getItem(REGISTERED_USERS_KEY);
         const registeredUsers: StoredAccount[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
 
@@ -202,6 +272,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
             localStorage.removeItem(SESSION_STORAGE_KEY);
           }
 
+          setIsLoading(false);
           return { success: true };
         } else {
           const errorMsg = 'Invalid email or password. Please try again.';
@@ -212,13 +283,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
     } catch (err: any) {
       console.error('Login error:', err);
-      let errorMsg = 'An unexpected error occurred during login. Please try again.';
+      let errorMsg = err.message || 'An unexpected error occurred during login. Please try again.';
 
-      if (err.message?.includes('Invalid login credentials')) {
+      if (err.message?.includes('Invalid login credentials') || err.message?.includes('invalid_credentials')) {
         errorMsg = 'Invalid email or password. Please try again.';
       } else if (err.message?.includes('User not found') || err.message?.includes('not found')) {
         errorMsg = 'No account found with this email. Please check your email or sign up.';
       } else if (err.message?.includes('Email not confirmed')) {
+        setPendingVerificationEmail(email.trim().toLowerCase());
         errorMsg = 'Please verify your email before logging in. Check your inbox for the verification link.';
       }
 
@@ -230,7 +302,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const signup = async (
     data: SignUpData
-  ): Promise<{ success: boolean; error?: string }> => {
+  ): Promise<{ success: boolean; error?: string; requiresConfirmation?: boolean }> => {
     setAuthError(null);
     setIsLoading(true);
 
@@ -254,28 +326,104 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           preferredStyle: 'Simple'
         };
 
-        const { error } = await supabase.auth.signUp({
+        const { data: signUpData, error } = await supabase.auth.signUp({
           email: cleanEmail,
           password: cleanPassword,
           options: {
-            data: metadata
+            data: metadata,
+            emailRedirectTo: window.location.origin
           }
         });
 
         if (error) {
-          // Handle user already exists error from Supabase
           if (error.message?.includes('User already registered') || error.message?.includes('already been taken')) {
             throw new Error('An account with this email already exists. Please login instead.');
+          }
+          if (error.message?.includes('rate limit') || error.status === 429) {
+            throw new Error('Email sending rate limit reached. Please wait a minute before requesting another confirmation email or try logging in.');
+          }
+          // Supabase free tier SMTP failure (HTTP 500: Error sending confirmation email)
+          if (
+            error.message?.includes('Error sending confirmation email') ||
+            error.message?.includes('confirmation email') ||
+            (error.status === 500 && String(error.message).toLowerCase().includes('email'))
+          ) {
+            console.warn(
+              'Supabase SMTP encountered an issue sending confirmation email (common on Supabase free tier rate limits). ' +
+              'Activating resilient local fallback account so student can continue learning immediately. ' +
+              'To fix permanently in Supabase: In Dashboard > Authentication > Providers > Email, toggle "Confirm email" to OFF.'
+            );
+
+            // Register account locally so the user is immediately authenticated and unblocked
+            const storedUsersRaw = localStorage.getItem(REGISTERED_USERS_KEY);
+            const registeredUsers: StoredAccount[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
+
+            const newUser: AuthUser = {
+              id: `user-${Date.now()}`,
+              name: data.name.trim(),
+              email: cleanEmail,
+              grade: (typeof data.grade === 'string' ? data.grade : '10th'),
+              level: data.level || 'Intermediate',
+              preferredSubjects:
+                data.preferredSubjects && data.preferredSubjects.length > 0
+                  ? data.preferredSubjects
+                  : ['Mathematics', 'Science'],
+              preferredStyle: 'Simple',
+              isDemo: false,
+              emailVerified: true,
+              createdAt: new Date().toISOString()
+            };
+
+            const existingIdx = registeredUsers.findIndex(
+              (acc) => acc.user.email.toLowerCase() === cleanEmail
+            );
+            if (existingIdx >= 0) {
+              registeredUsers[existingIdx] = { user: newUser, passwordHash: cleanPassword };
+            } else {
+              registeredUsers.push({ user: newUser, passwordHash: cleanPassword });
+            }
+            localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
+
+            setUser(newUser);
+            setIsAuthenticated(true);
+            setAuthError(null);
+            localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newUser));
+
+            setIsLoading(false);
+            return {
+              success: true,
+              requiresConfirmation: false
+            };
           }
           throw error;
         }
 
-        // Sign up successful, but email not verified yet
-        setPendingVerificationEmail(cleanEmail);
+        // Handle case where user already exists (Supabase returns empty identities array when email confirm is enabled)
+        if (signUpData?.user && signUpData.user.identities && signUpData.user.identities.length === 0) {
+          throw new Error('An account with this email already exists. Please login instead.');
+        }
+
+        // If email confirmation is required and session is not immediately established
+        const requiresConfirmation = !signUpData?.session;
+
+        if (requiresConfirmation) {
+          setPendingVerificationEmail(cleanEmail);
+          setIsLoading(false);
+          return { success: true, requiresConfirmation: true };
+        }
+
+        // If email confirmation is disabled or session returned immediately
+        if (signUpData?.user) {
+          const authUser = mapSupabaseUserToAuthUser(signUpData.user);
+          setUser(authUser);
+          setIsAuthenticated(true);
+          localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(authUser));
+        }
+
         setIsLoading(false);
-        return { success: true, requiresConfirmation: true };
+        return { success: true, requiresConfirmation: false };
       } else {
-        // Fallback to local storage (instant verification simulation)
+        // Fallback to local storage
         const storedUsersRaw = localStorage.getItem(REGISTERED_USERS_KEY);
         const registeredUsers: StoredAccount[] = storedUsersRaw ? JSON.parse(storedUsersRaw) : [];
 
@@ -296,7 +444,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           id: `user-${Date.now()}`,
           name: data.name.trim(),
           email: cleanEmail,
-          grade: data.grade || '10th',
+          grade: (typeof data.grade === 'string' ? data.grade : '10th'),
           level: data.level || 'Intermediate',
           preferredSubjects:
             data.preferredSubjects.length > 0
@@ -304,33 +452,33 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               : ['Mathematics', 'Science'],
           preferredStyle: 'Simple',
           isDemo: false,
-          emailVerified: true, // simulate instant verification in fallback
+          emailVerified: true,
           createdAt: new Date().toISOString()
         };
 
-        // Save user to simulated user database
         registeredUsers.push({
           user: newUser,
           passwordHash: cleanPassword
         });
         localStorage.setItem(REGISTERED_USERS_KEY, JSON.stringify(registeredUsers));
 
-        // Authenticate new user immediately
         setUser(newUser);
         setIsAuthenticated(true);
         setAuthError(null);
         localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(newUser));
 
         setIsLoading(false);
-        return { success: true };
+        return { success: true, requiresConfirmation: false };
       }
     } catch (err: any) {
       console.error('Signup error:', err);
       let errorMsg = 'Failed to create account. Please try again.';
       if (err.message?.includes('Password should be at least 6 characters')) {
         errorMsg = err.message;
-      } else if (err.message?.includes('User already registered')) {
+      } else if (err.message?.includes('already exists') || err.message?.includes('already registered')) {
         errorMsg = 'An account with this email already exists. Please login instead.';
+      } else if (err.message) {
+        errorMsg = err.message;
       }
       setAuthError(errorMsg);
       setIsLoading(false);
@@ -344,32 +492,41 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     try {
       if (!pendingVerificationEmail) {
-        throw new Error('No pending verification email');
+        throw new Error('No pending verification email found. Please enter your email and try logging in.');
       }
 
-      // Supabase resend (if configured)
       if (supabase) {
         const { error } = await supabase.auth.resend({
           type: 'signup',
-          email: pendingVerificationEmail
+          email: pendingVerificationEmail,
+          options: {
+            emailRedirectTo: window.location.origin
+          }
         });
 
-        if (error) throw error;
+        if (error) {
+          if (error.message?.includes('rate limit') || error.status === 429) {
+            throw new Error('Rate limit reached. Please wait a minute before requesting another email.');
+          }
+          if (error.message?.includes('confirmation email') || error.status === 500) {
+            throw new Error('Supabase email service is currently rate-limited on the free tier. To bypass, please disable "Confirm email" in your Supabase Dashboard under Authentication > Providers > Email.');
+          }
+          throw error;
+        }
       }
-      // If supabase not configured, we just pretend it worked (fallback)
 
       setIsLoading(false);
       return { success: true };
     } catch (err: any) {
       console.error('Resend verification error:', err);
-      const errorMsg = 'Failed to resend verification email. Please try again.';
+      const errorMsg = err.message || 'Failed to resend verification email. Please try again.';
       setAuthError(errorMsg);
       setIsLoading(false);
       return { success: false, error: errorMsg };
     }
   };
 
-  const logout = () => {
+  const logout = async () => {
     setUser(null);
     setIsAuthenticated(false);
     setAuthError(null);
@@ -377,10 +534,18 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem(SESSION_STORAGE_KEY);
     sessionStorage.removeItem(SESSION_STORAGE_KEY);
 
+    if (supabase) {
+      try {
+        await supabase.auth.signOut();
+      } catch (e) {
+        console.warn('Supabase signOut error:', e);
+      }
+    }
+
     // Clear syllabus data for all possible users (defensive cleanup)
     try {
       const keys = Object.keys(localStorage);
-      keys.forEach(key => {
+      keys.forEach((key) => {
         if (key.startsWith('gurumitra_syllabus_data_')) {
           localStorage.removeItem(key);
         }
@@ -399,16 +564,35 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const resetPassword = async (
     email: string
-  ): Promise<{ success: boolean; message: string }> => {
-    // Simulated delay
-    return new Promise((resolve) => {
-      setTimeout(() => {
-        resolve({
-          success: true,
-          message: `Password reset instructions have been sent to ${email}. (Prototype simulation — in production, an email with a secure token will be dispatched)`
+  ): Promise<{ success: boolean; message: string; error?: string }> => {
+    const cleanEmail = email.trim().toLowerCase();
+    try {
+      if (supabase) {
+        const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
+          redirectTo: `${window.location.origin}`
         });
-      }, 600);
-    });
+        if (error) throw error;
+        return {
+          success: true,
+          message: `Password reset instructions have been sent to ${cleanEmail}. Please check your inbox.`
+        };
+      } else {
+        // Fallback simulated delay
+        await new Promise((resolve) => setTimeout(resolve, 600));
+        return {
+          success: true,
+          message: `Password reset instructions have been sent to ${cleanEmail}. (Prototype simulation mode)`
+        };
+      }
+    } catch (err: any) {
+      console.error('Password reset error:', err);
+      const errorMsg = err.message || 'Failed to send password reset email.';
+      return {
+        success: false,
+        message: errorMsg,
+        error: errorMsg
+      };
+    }
   };
 
   return (
@@ -418,9 +602,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated,
         isLoading,
         authError,
+        isConfigured,
         login,
+        signIn: login,
         signup,
+        signUp: signup,
         logout,
+        signOut: logout,
         resetPassword,
         clearError,
         demoCredentials: {

@@ -13,6 +13,8 @@ import {
   ActivityItem,
   QuizResult,
   SyllabusFile,
+  ParsedMaterial,
+  CurrentLearningContext,
   StudentProfile as AuthStudentProfile
 } from '../types';
 import {
@@ -23,10 +25,17 @@ import {
   INITIAL_ACTIVITIES,
   mockCurriculum
 } from '../data/mockCurriculum';
+import {
+  getChapters,
+  getRecommendations,
+  getLearningPath,
+  normalizeGrade
+} from '../services/curriculumService';
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabase';
 import { extractTextFromPDF } from '../utils/pdfExtractor';
 import { parseSyllabusWithAI, getFallbackSyllabusParse } from '../lib/aiSyllabusParser';
+import { processUploadedFile } from '../services/fileProcessingService';
 
 // Extend the AuthStudentProfile with client-specific fields
 export interface StudentProfile extends AuthStudentProfile {
@@ -46,6 +55,58 @@ export interface StudentProfile extends AuthStudentProfile {
   }>;
 }
 
+export interface StudentContextType {
+  student: StudentProfile;
+  subjects: SubjectData[];
+  recommendations: RecommendationItem[];
+  studyPlan: StudyPlanItem[];
+  learningPath: LearningPathNode[];
+  activities: ActivityItem[];
+  activeTab: string;
+  activeSubject: SubjectType;
+  lastQuizResult: QuizResult | null;
+  notification: { message: string; type: 'success' | 'info' | 'warning' } | null;
+  judgeDemoStep: number;
+  syllabusData: Record<string, any>;
+  syllabusUploaded: boolean;
+  uploadedMaterial: ParsedMaterial | null;
+  uploadState: 'idle' | 'uploading' | 'analyzing' | 'ready' | 'error';
+  uploadError: string | null;
+  currentLearningContext: CurrentLearningContext;
+  setCurrentLearningContext: React.Dispatch<React.SetStateAction<CurrentLearningContext>>;
+  setActiveTab: (tab: string) => void;
+  setActiveSubject: (subject: SubjectType) => void;
+  setPreferredStyle: (style: LearningStyle) => void;
+  updateProfile: (name: string, grade: string, style: LearningStyle, board?: BoardType, stream?: StreamType) => void;
+  toggleStudyPlanItem: (id: string) => void;
+  recordQuizResult: (result: QuizResult) => void;
+  setJudgeDemoStep: (step: number | ((prev: number) => number)) => void;
+  completeSyllabusSetup: (filesRecord: Record<string, any>) => Promise<any>;
+  extractAndAnalyzeTopics: (subject: SubjectType, text: string) => Promise<any>;
+  setSyllabusAnalysis: (subject: SubjectType, data: any) => void;
+  processAndSetFile: (file: File) => Promise<ParsedMaterial>;
+  removeUploadedMaterial: () => void;
+  clearUploadError: () => void;
+  setTopicContext: (
+    subject: SubjectType,
+    chapter: string,
+    topic: string,
+    chapterId?: string,
+    topicId?: string,
+    difficulty?: DifficultyLevel
+  ) => void;
+  startQuizForCurrentTopic: (override?: Partial<CurrentLearningContext>) => void;
+  setAcademicProfile: (
+    grade: ClassLevel,
+    board: BoardType,
+    stream: StreamType,
+    style?: LearningStyle,
+    level?: DifficultyLevel
+  ) => void;
+  resetToDefault: () => void;
+  clearNotification: () => void;
+}
+
 const StudentContext = createContext<StudentContextType | undefined>(undefined);
 
 export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -63,7 +124,7 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     preferredStyle: user ? user.preferredStyle : 'Simple',
     isDemo: user ? user.isDemo : false,
     emailVerified: user ? user.emailVerified : true,
-    createdAt: user ? user.createdAt : new Date().toISOString(),
+    createdAt: user ? (user.createdAt || user.created_at || new Date().toISOString()) : new Date().toISOString(),
     // Client-specific fields with defaults
     streak: 4,
     totalPoints: 1420,
@@ -78,20 +139,169 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   const [learningPath, setLearningPath] = useState<LearningPathNode[]>(INITIAL_LEARNING_PATH);
   const [activities, setActivities] = useState<ActivityItem[]>(INITIAL_ACTIVITIES);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [activeSubject, setActiveSubject] = useState<SubjectType>('Science');
+  const [activeSubject, setActiveSubjectState] = useState<SubjectType>('Mathematics');
   const [lastQuizResult, setLastQuizResult] = useState<QuizResult | null>(null);
   const [notification, setNotification] = useState<{ message: string; type: 'success' | 'info' | 'warning' } | null>(null);
   const [judgeDemoStep, setJudgeDemoStep] = useState<number>(0);
   const [syllabusData, setSyllabusData] = useState<Record<string, any>>({});
 
+  // Material upload state
+  const [uploadedMaterial, setUploadedMaterial] = useState<ParsedMaterial | null>(null);
+  const [uploadState, setUploadState] = useState<'idle' | 'uploading' | 'analyzing' | 'ready' | 'error'>('idle');
+  const [uploadError, setUploadError] = useState<string | null>(null);
+
+  // Active learning context
+  const [currentLearningContext, setCurrentLearningContext] = useState<CurrentLearningContext>(() => ({
+    classLevel: 'Class 9',
+    board: 'CBSE',
+    stream: 'Not applicable',
+    subject: 'Mathematics',
+    chapter: 'Number Systems',
+    chapterId: 'cbse-9-math-ch1',
+    topic: 'Irrational Numbers and Decimal Expansions',
+    topicId: 'cbse-9-math-t1',
+    learningStyle: 'Simple',
+    difficulty: 'Intermediate'
+  }));
+
+  const processAndSetFile = async (file: File): Promise<ParsedMaterial> => {
+    setUploadState('uploading');
+    setUploadError(null);
+
+    try {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      setUploadState('analyzing');
+
+      const parsed = await processUploadedFile(file);
+
+      await new Promise((resolve) => setTimeout(resolve, 600));
+
+      setUploadedMaterial(parsed);
+      setUploadState('ready');
+
+      setNotification({
+        message: `Successfully analyzed "${file.name}" (${parsed.wordCount} words, ${parsed.topics.length} topics found). Connected to AI Tutor!`,
+        type: 'success'
+      });
+
+      return parsed;
+    } catch (err: any) {
+      setUploadState('error');
+      const msg = err?.message || 'Could not read this file. Please try another supported file.';
+      setUploadError(msg);
+      setNotification({
+        message: msg,
+        type: 'warning'
+      });
+      throw err;
+    }
+  };
+
+  const removeUploadedMaterial = () => {
+    setUploadedMaterial(null);
+    setUploadState('idle');
+    setUploadError(null);
+    setNotification({
+      message: 'Uploaded material removed from AI Tutor session.',
+      type: 'info'
+    });
+  };
+
+  const clearUploadError = () => {
+    setUploadError(null);
+    if (uploadState === 'error') {
+      setUploadState('idle');
+    }
+  };
+
+  const setActiveSubject = (subject: SubjectType) => {
+    setActiveSubjectState(subject);
+    const updatedRecs = getRecommendations(normalizeGrade(student.grade), student.board || 'CBSE', student.stream || 'Not applicable', subject);
+    if (updatedRecs && updatedRecs.length > 0) {
+      setRecommendations(updatedRecs);
+    }
+    const updatedPath = getLearningPath(normalizeGrade(student.grade), student.board || 'CBSE', student.stream || 'Not applicable', subject);
+    if (updatedPath && updatedPath.length > 0) {
+      setLearningPath(updatedPath);
+    }
+
+    const chs = getChapters(normalizeGrade(student.grade), student.board || 'CBSE', student.stream || 'Not applicable', subject);
+    const firstCh = chs[0];
+    const firstTop = firstCh?.topics[0];
+    if (firstCh && firstTop) {
+      setCurrentLearningContext((prev) => ({
+        ...prev,
+        subject,
+        chapter: firstCh.title,
+        chapterId: firstCh.id,
+        topic: firstTop.title,
+        topicId: firstTop.id
+      }));
+    } else {
+      setCurrentLearningContext((prev) => ({
+        ...prev,
+        subject
+      }));
+    }
+  };
+
+  const setTopicContext = (
+    subject: SubjectType,
+    chapter: string,
+    topic: string,
+    chapterId?: string,
+    topicId?: string,
+    difficulty?: DifficultyLevel
+  ) => {
+    setActiveSubjectState(subject);
+    setCurrentLearningContext((prev) => ({
+      ...prev,
+      subject,
+      chapter,
+      topic,
+      chapterId: chapterId || prev.chapterId,
+      topicId: topicId || prev.topicId,
+      difficulty: difficulty || prev.difficulty
+    }));
+  };
+
+  const startQuizForCurrentTopic = (override?: Partial<CurrentLearningContext>) => {
+    if (override) {
+      setCurrentLearningContext((prev) => ({ ...prev, ...override }));
+      if (override.subject) {
+        setActiveSubjectState(override.subject);
+      }
+    }
+    setActiveTab('quiz');
+  };
+
+  const setAcademicProfile = (
+    grade: ClassLevel,
+    board: BoardType,
+    stream: StreamType,
+    style?: LearningStyle,
+    level?: DifficultyLevel
+  ) => {
+    setStudent(prev => ({
+      ...prev,
+      grade,
+      board,
+      stream,
+      preferredStyle: style || prev.preferredStyle,
+      level: level || prev.level
+    }));
+    if (style) {
+      setPreferredStyle(style);
+    }
+  };
+
   // Topic extraction helper (client-side matching against curriculum)
-  const extractAndAnalyzeTopics = (text: string, subject: SubjectType): string[] => {
+  const extractAndAnalyzeTopics = async (subject: SubjectType, text: string): Promise<any> => {
     try {
       const curriculum = mockCurriculum[subject];
       if (!curriculum || !curriculum.topics) return [];
 
       const textLower = text.toLowerCase();
-      // Match topics mentioned in text or return all curriculum topics if text is general
       const detected = curriculum.topics.filter(topic =>
         textLower.includes(topic.toLowerCase())
       );
@@ -103,7 +313,7 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
   };
 
   // Helper to update analysis for a subject
-  const setSyllabusAnalysis = (subject: string, analysisData: any) => {
+  const setSyllabusAnalysis = (subject: SubjectType, analysisData: any) => {
     setStudent(prev => ({
       ...prev,
       syllabusData: {
@@ -128,7 +338,7 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         let publicUrl = '';
         let extractedText = `Syllabus for ${subjectKey}. Covered units: ${mockCurriculum[subjectKey as SubjectType]?.topics?.join(', ')}`;
 
-        // Attempt Supabase Storage Upload if file object is present
+        // Attempt Supabase Storage Upload if file object is present and supabase is configured
         if (fileData.file && supabase) {
           try {
             const fileName = `${currentUserId}/${subjectKey}/${Date.now()}-${fileData.name}`;
@@ -148,7 +358,7 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
                 .getPublicUrl(fileName);
               publicUrl = urlData?.publicUrl || '';
 
-              // Try Supabase Function for extraction
+              // Try Supabase Function for extraction if available
               try {
                 const { data: extractionData } = await supabase.functions.invoke(
                   'extract-pdf-text',
@@ -203,7 +413,7 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
           storagePath,
           publicUrl,
           extractedText: fallbackSyllabus.rawText,
-          topics: fallbackSyllabus.chapters, // Chapters as topics for backward compatibility
+          topics: fallbackSyllabus.chapters,
           analysisComplete: true
         };
       });
@@ -253,13 +463,12 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         preferredStyle: user.preferredStyle,
         isDemo: user.isDemo,
         emailVerified: user.emailVerified,
-        createdAt: user.created_at || new Date().toISOString()
-        // Note: streak, totalPoints, rank, board, stream, classLevel are not in auth user, so we keep existing values
+        createdAt: user.createdAt || user.created_at || new Date().toISOString()
       }));
 
       // If user selected preferred subjects, set active subject to first one if available
       if (user.preferredSubjects && user.preferredSubjects.length > 0) {
-        setActiveSubject(user.preferredSubjects[0]);
+        setActiveSubjectState(user.preferredSubjects[0]);
       }
 
       // Restore syllabus data from localStorage using per-user key
@@ -297,8 +506,15 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     });
   };
 
-  const updateProfile = (name: string, grade: string, style: LearningStyle) => {
-    setStudent((prev) => ({ ...prev, name, grade, preferredStyle: style }));
+  const updateProfile = (name: string, grade: string, style: LearningStyle, board?: BoardType, stream?: StreamType) => {
+    setStudent((prev) => ({
+      ...prev,
+      name,
+      grade,
+      preferredStyle: style,
+      board: board || prev.board,
+      stream: stream || prev.stream
+    }));
     setNotification({
       message: 'Student profile updated successfully!',
       type: 'success'
@@ -340,15 +556,19 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     // 1. Update Student Profile
     const xpGained = accuracy >= 80 ? 150 : accuracy >= 60 ? 80 : 40;
     setStudent((prev) => {
-      const newAcc = Math.round((prev.overallAccuracy * 4 + accuracy) / 5);
-      const newProg = Math.min(100, prev.overallProgress + 2);
+      const currentAcc = prev.overallAccuracy ?? 80;
+      const currentProg = prev.overallProgress ?? 70;
+      const currentXp = prev.xp ?? 1000;
+      const currentLessons = prev.completedLessons ?? 10;
+      const newAcc = Math.round((currentAcc * 4 + accuracy) / 5);
+      const newProg = Math.min(100, currentProg + 2);
       return {
         ...prev,
         level: newLevel,
         overallAccuracy: newAcc,
         overallProgress: newProg,
-        xp: prev.xp + xpGained,
-        completedLessons: prev.completedLessons + 1
+        xp: currentXp + xpGained,
+        completedLessons: currentLessons + 1
       };
     });
 
@@ -484,7 +704,7 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
       preferredStyle: user ? user.preferredStyle : 'Simple',
       isDemo: user ? user.isDemo : false,
       emailVerified: user ? user.emailVerified : true,
-      createdAt: user ? user.createdAt : new Date().toISOString(),
+      createdAt: user ? (user.createdAt || user.created_at || new Date().toISOString()) : new Date().toISOString(),
       // Client-specific fields with defaults
       streak: 4,
       totalPoints: 1420,
@@ -499,6 +719,9 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setActivities(INITIAL_ACTIVITIES);
     setLastQuizResult(null);
     setJudgeDemoStep(0);
+    setUploadedMaterial(null);
+    setUploadState('idle');
+    setUploadError(null);
     setNotification({
       message: 'Demo state reset to initial baseline successfully!',
       type: 'info'
@@ -521,6 +744,11 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         judgeDemoStep,
         syllabusData,
         syllabusUploaded: student.syllabusUploaded,
+        uploadedMaterial,
+        uploadState,
+        uploadError,
+        currentLearningContext,
+        setCurrentLearningContext,
         setActiveTab,
         setActiveSubject,
         setPreferredStyle,
@@ -531,6 +759,12 @@ export const StudentProvider: React.FC<{ children: React.ReactNode }> = ({ child
         completeSyllabusSetup,
         extractAndAnalyzeTopics,
         setSyllabusAnalysis,
+        processAndSetFile,
+        removeUploadedMaterial,
+        clearUploadError,
+        setTopicContext,
+        startQuizForCurrentTopic,
+        setAcademicProfile,
         resetToDefault,
         clearNotification
       }}

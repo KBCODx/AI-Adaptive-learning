@@ -1,23 +1,5 @@
 export type LearningStyle = 'Simple' | 'Analogy' | 'Visual' | 'Exam-oriented';
 
-export type SubjectType =
-  | 'Mathematics'
-  | 'Physics'
-  | 'Chemistry'
-  | 'Biology'
-  | 'English'
-  | 'Computer Science'
-  | 'Social Science'
-  | 'Accountancy'
-  | 'Business Studies'
-  | 'Economics';
-
-export type DifficultyLevel = 'Beginner' | 'Intermediate' | 'Advanced';
-
-export type BoardType = 'CBSE' | 'ICSE' | 'State Board' | 'IB' | 'IGCSE';
-
-export type StreamType = 'Science' | 'Commerce' | 'Humanities';
-
 export type ClassLevel =
   | 'Class 6'
   | 'Class 7'
@@ -26,6 +8,115 @@ export type ClassLevel =
   | 'Class 10'
   | 'Class 11'
   | 'Class 12';
+
+export type BoardType = 'CBSE' | 'ICSE' | 'UP Board';
+
+export type StreamType = 'Science' | 'Commerce' | 'Humanities / Arts' | 'Not applicable';
+
+export type DifficultyLevel = 'Beginner' | 'Intermediate' | 'Advanced';
+
+export type SubjectType =
+  | 'Mathematics'
+  | 'Science'
+  | 'Physics'
+  | 'Chemistry'
+  | 'Biology'
+  | 'English'
+  | 'Computer Science'
+  | 'Social Science'
+  | 'Accountancy'
+  | 'Business Studies'
+  | 'Economics'
+  | 'Hindi'
+  | 'History'
+  | 'Political Science'
+  | 'Geography'
+  | string;
+
+export interface CurriculumTopic {
+  id: string;
+  title: string;
+  difficulty: DifficultyLevel;
+  keyPoints: string[];
+  formulas?: string[];
+  summary: string;
+}
+
+export interface CurriculumChapter {
+  id: string;
+  number: number;
+  title: string;
+  subject: string;
+  classLevel: ClassLevel;
+  board: BoardType;
+  stream?: StreamType;
+  description: string;
+  topics: CurriculumTopic[];
+}
+
+export interface PedagogicalStyleContent {
+  heading: string;
+  paragraph: string;
+  subtext: string;
+  tip: string;
+  bulletPoints?: string[];
+  exampleBox?: string;
+  analogyDetails?: {
+    analogyTitle: string;
+    analogyStory: string;
+    conceptMapping: { realWorld: string; concept: string }[];
+  };
+  visualDiagram?: string;
+  comparisonTable?: {
+    headers: string[];
+    rows: string[][];
+  };
+  visualSteps?: string[];
+  examBreakdown?: {
+    definition: string;
+    keyPoints: string[];
+    formulas: string[];
+    importantFacts?: string[];
+    commonMistakes: string[];
+    examTips: string[];
+    practiceQuestions: { question: string; marks: string; solution: string }[];
+  };
+}
+
+export interface CurriculumLessonContent {
+  subject: string;
+  classLevel: ClassLevel;
+  board: BoardType;
+  stream: StreamType;
+  chapterId: string;
+  chapterTitle: string;
+  topicId: string;
+  topicTitle: string;
+  difficulty: DifficultyLevel;
+  progress: number;
+  styles: Record<LearningStyle, PedagogicalStyleContent>;
+}
+
+export interface CurrentLearningContext {
+  classLevel: ClassLevel;
+  board: BoardType;
+  stream: StreamType;
+  subject: SubjectType;
+  chapter: string;
+  chapterId?: string;
+  topic: string;
+  topicId?: string;
+  learningStyle: LearningStyle;
+  difficulty: DifficultyLevel;
+}
+
+export interface StudentAcademicProfile {
+  grade: ClassLevel;
+  board: BoardType;
+  stream: StreamType;
+  preferredStyle: LearningStyle;
+  level: DifficultyLevel;
+}
 
 export interface StudentProfile {
   id: string;
@@ -38,12 +129,19 @@ export interface StudentProfile {
   isDemo?: boolean;
   emailVerified?: boolean;
   createdAt: string;
+  created_at?: string;
   streak: number;
-  totalPoints: number;
-  rank: number;
+  totalPoints?: number;
+  rank?: number;
+  overallProgress?: number;
+  overallAccuracy?: number;
+  completedLessons?: number;
+  xp?: number;
   board?: BoardType;
   stream?: StreamType;
   classLevel?: ClassLevel;
+  syllabusUploaded?: boolean;
+  syllabusData?: Record<string, any>;
 }
 
 export interface SubjectData {
@@ -60,7 +158,7 @@ export interface SubjectData {
   color: string;
   bgLight: string;
   description: string;
-  topics: string[];
+  topics?: string[];
 }
 
 export interface RecommendationItem {
@@ -133,6 +231,22 @@ export interface QuizResult {
   userAnswers: { questionIndex: number; selectedIndex: number; isCorrect: boolean }[];
 }
 
+export interface ParsedMaterial {
+  id: string;
+  fileName: string;
+  fileType: string;
+  fileSize: number;
+  fileSizeFormatted: string;
+  extractedText: string;
+  summaryPreview: string;
+  wordCount: number;
+  topics: {
+    title: string;
+    concepts: string;
+  }[];
+  uploadedAt: string;
+}
+
 export interface TutorMessage {
   id: string;
   sender: 'student' | 'tutor';
@@ -140,20 +254,44 @@ export interface TutorMessage {
   timestamp: string;
   subject?: SubjectType;
   styleUsed?: LearningStyle;
+  attachedFile?: any;
   structuredResponse?: {
+    responseType?: 'conceptual' | 'mathematical' | 'programming' | 'document' | 'general' | string;
+    crossSubjectNotice?: any;
     directAnswer: string;
     simpleExplanation: string;
+    example?: string;
     stepByStep?: string[];
     analogy?: string;
     keyConcept: string;
     formulaOrCode?: string;
+    codeExplanation?: string;
+    complexity?: {
+      time: string;
+      space: string;
+    };
     visualDiagram?: string;
+    relevantContentFound?: any;
+    documentReference?: any;
+    followUpQuestions?: string[];
     practiceQuestion?: {
       question: string;
       options?: string[];
       answer: string;
     };
   };
+}
+
+export interface UserProfile {
+  id: string;
+  full_name: string;
+  learning_level: DifficultyLevel;
+  preferred_subjects: SubjectType[];
+  grade?: ClassLevel | string;
+  board?: BoardType;
+  stream?: StreamType;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface AuthUser {
@@ -167,6 +305,10 @@ export interface AuthUser {
   isDemo?: boolean;
   emailVerified?: boolean;
   createdAt: string;
+  created_at?: string;
+  board?: BoardType;
+  stream?: StreamType;
+  classLevel?: ClassLevel;
   syllabusData?: Record<string, {
     fileName: string;
     fileSize: number;
@@ -177,7 +319,7 @@ export interface AuthUser {
     topics: string[]; // Detected topics from PDF
     examFocusedTopics?: Record<string, string[]>; // Chapter -> exam-focused topics (4-5 per chapter)
     analysisComplete: boolean;
-  }>
+  }>;
 }
 
 export interface LoginCredentials {
@@ -191,7 +333,9 @@ export interface SignUpData {
   email: string;
   password: string;
   confirmPassword?: string;
-  grade: string;
+  grade?: ClassLevel | string;
+  board?: BoardType;
+  stream?: StreamType;
   level: DifficultyLevel;
   preferredSubjects: SubjectType[];
 }
